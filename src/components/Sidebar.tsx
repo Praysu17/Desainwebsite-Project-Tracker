@@ -264,9 +264,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-800/90 transition-all text-left group cursor-pointer border border-transparent hover:border-slate-700/80"
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs">
-                {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'SP'}
-              </div>
+              {currentUser.avatar ? (
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  className="w-8 h-8 rounded-lg object-cover border border-cyan-500/40 shadow-xs shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs border border-cyan-500/30">
+                  {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'SP'}
+                </div>
+              )}
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-slate-200 truncate group-hover:text-cyan-300 transition-colors">
                   {currentUser.name || 'Sugeng Prayitno'}

@@ -746,9 +746,17 @@ export const SettingsView: React.FC = () => {
                     <tr key={member.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs border border-slate-300 shadow-xs shrink-0">
-                            {member.name.slice(0, 2).toUpperCase()}
-                          </div>
+                          {member.avatar ? (
+                            <img
+                              src={member.avatar}
+                              alt={member.name}
+                              className="w-8 h-8 rounded-xl object-cover border border-cyan-500/40 shadow-xs shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs border border-slate-300 shadow-xs shrink-0">
+                              {member.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
                           <div>
                             <span className="font-bold text-slate-900 block">{member.name}</span>
                             {currentUser.id === member.id && (
