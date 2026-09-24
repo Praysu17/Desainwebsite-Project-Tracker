@@ -83,12 +83,3 @@ export async function testFirestoreConnection() {
 
 // Trigger initial connection test
 testFirestoreConnection();
-
-// Try signing in anonymously if no auth user is present so security rules with isSignedIn() succeed
-onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    signInAnonymously(auth).catch(() => {
-      // ignore anonymous sign-in error if disabled in console
-    });
-  }
-});

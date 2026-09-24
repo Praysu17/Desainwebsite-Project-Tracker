@@ -94,6 +94,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       password: 'Password01',
       avatar: '',
     },
+    {
+      id: 'usr-2',
+      name: 'Kunto Krisworo',
+      email: 'kuntokrisworo@agency.com',
+      role: 'Staff',
+      password: 'Password01',
+      avatar: '',
+    },
   ],
   teamMembers: [
     {
@@ -101,6 +109,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       name: 'Sugeng Prayitno',
       email: 'sugeng@agency.com',
       role: 'Owner/Admin',
+      password: 'Password01',
+      avatar: '',
+    },
+    {
+      id: 'usr-2',
+      name: 'Kunto Krisworo',
+      email: 'kuntokrisworo@agency.com',
+      role: 'Staff',
       password: 'Password01',
       avatar: '',
     },

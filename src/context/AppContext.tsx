@@ -383,21 +383,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubUsers = onSnapshot(
       collection(db, 'users'),
       (snapshot) => {
-        if (snapshot.empty) {
-          // Seed the initial Owner/Admin Sugeng Prayitno into Firestore
-          const defaultAdmin = DEFAULT_SETTINGS.users[0];
-          setDoc(doc(db, 'users', defaultAdmin.id), defaultAdmin).catch(() => {});
-        } else {
-          const remoteUsers: UserAccount[] = [];
-          snapshot.forEach((docSnap) => {
-            remoteUsers.push(docSnap.data() as UserAccount);
-          });
-          setSettings((prev) => ({
-            ...prev,
-            users: remoteUsers,
-            teamMembers: remoteUsers,
-          }));
-        }
+        const remoteUsersMap = new Map<string, UserAccount>();
+
+        // 1. Preload DEFAULT_SETTINGS users
+        DEFAULT_SETTINGS.users.forEach((u) => remoteUsersMap.set(u.id, u));
+
+        // 2. Overlay remote Firestore users
+        snapshot.forEach((docSnap) => {
+          const u = docSnap.data() as UserAccount;
+          remoteUsersMap.set(u.id, u);
+        });
+
+        const mergedUsers = Array.from(remoteUsersMap.values());
+
+        setSettings((prev) => ({
+          ...prev,
+          users: mergedUsers,
+          teamMembers: mergedUsers,
+        }));
+
+        // Ensure default users exist in Firestore
+        DEFAULT_SETTINGS.users.forEach((defaultUser) => {
+          const exists = snapshot.docs.some(
+            (d) =>
+              d.id === defaultUser.id ||
+              (d.data() as UserAccount).email?.toLowerCase() === defaultUser.email?.toLowerCase()
+          );
+          if (!exists) {
+            setDoc(doc(db, 'users', defaultUser.id), defaultUser).catch(() => {});
+          }
+        });
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, 'users');
@@ -1055,24 +1070,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const trimmedId = identifier.trim().toLowerCase();
     const trimmedPass = pass.trim();
 
-    let userList = settings.users || [];
+    // Aggregate users across in-memory state, defaults, and Firestore
+    const userMap = new Map<string, UserAccount>();
 
-    // Query Firestore users collection as verification
+    DEFAULT_SETTINGS.users.forEach((u) => userMap.set(u.email.toLowerCase(), u));
+    (settings.users || []).forEach((u) => userMap.set(u.email.toLowerCase(), u));
+    (settings.teamMembers || []).forEach((u) => userMap.set(u.email.toLowerCase(), u));
+
+    // Also query Firestore users collection directly
     try {
       const userSnaps = await getDocs(collection(db, 'users'));
-      if (!userSnaps.empty) {
-        const firestoreUsers: UserAccount[] = [];
-        userSnaps.forEach((d) => firestoreUsers.push(d.data() as UserAccount));
-        userList = firestoreUsers;
-      }
+      userSnaps.forEach((d) => {
+        const u = d.data() as UserAccount;
+        if (u.email) {
+          userMap.set(u.email.toLowerCase(), u);
+        }
+      });
     } catch {
-      // fallback to in-memory list
+      // fallback to current map
     }
 
-    const matchedUser = userList.find((u) => {
+    const allUsers = Array.from(userMap.values());
+
+    const matchedUser = allUsers.find((u) => {
       const emailMatch = Boolean(u.email && u.email.trim().toLowerCase() === trimmedId);
       const nameMatch = Boolean(u.name && u.name.trim().toLowerCase() === trimmedId);
-      return emailMatch || nameMatch;
+      // Also match partial name if exact words match
+      const looseNameMatch = Boolean(u.name && u.name.trim().toLowerCase().includes(trimmedId));
+      return emailMatch || nameMatch || looseNameMatch;
     });
 
     if (!matchedUser) {
@@ -1119,7 +1144,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsAuthenticated(true);
       localStorage.setItem('sugeng_auth', 'true');
       return { success: true };
-    } catch (err) {
+    } catch (err: unknown) {
+      const errObj = err as { code?: string; message?: string };
+      if (
+        errObj?.code === 'auth/unauthorized-domain' ||
+        (errObj?.message && errObj.message.includes('unauthorized-domain'))
+      ) {
+        return {
+          success: false,
+          message:
+            'Domain deployment ini belum didaftarkan di Firebase Authorized Domains. Silakan login menggunakan Email/Nama Pengguna & Password di atas, atau daftarkan domain di Firebase Console > Authentication > Settings > Authorized Domains.',
+        };
+      }
       const msg = err instanceof Error ? err.message : 'Login Google dibatalkan atau gagal.';
       return { success: false, message: msg };
     }

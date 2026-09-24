@@ -28,7 +28,7 @@ import { useApp } from '../context/AppContext';
 import { AgencySettings, PartnerSplit, TeamMember, UserAccount } from '../types';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, currentUser, updateUser, deleteUser } = useApp();
+  const { settings, updateSettings, currentUser, addUser, updateUser, deleteUser } = useApp();
 
   const [activeTab, setActiveTab] = useState<
     'agency' | 'templates' | 'categories' | 'team' | 'split'
@@ -134,15 +134,13 @@ export const SettingsView: React.FC = () => {
   };
 
   // Team / User Management helpers
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!newMemberName.trim()) {
       setUserNotice({ type: 'error', message: 'Nama pengguna tidak boleh kosong.' });
       setTimeout(() => setUserNotice(null), 3000);
       return;
     }
-    const currentList = formData.teamMembers || formData.users || [];
-    const newMember: TeamMember = {
-      id: `usr-${Date.now()}`,
+    const newMemberData: Omit<UserAccount, 'id'> = {
       name: newMemberName.trim(),
       role: newMemberRole,
       email:
@@ -150,16 +148,20 @@ export const SettingsView: React.FC = () => {
         `${newMemberName.toLowerCase().replace(/\s+/g, '')}@agency.com`,
       password: newMemberPassword.trim() || 'Password01',
     };
-    const updated = [...currentList, newMember];
+
+    const createdUser = await addUser(newMemberData);
+
+    const currentList = formData.teamMembers || formData.users || [];
+    const updated = [...currentList, createdUser];
     const newSettings = { ...formData, teamMembers: updated, users: updated };
     setFormData(newSettings);
-    updateSettings(newSettings);
+
     setNewMemberName('');
     setNewMemberEmail('');
     setNewMemberPassword('Password01');
     setUserNotice({
       type: 'success',
-      message: `Pengguna "${newMember.name}" dengan role ${newMember.role} berhasil ditambahkan!`,
+      message: `Pengguna "${createdUser.name}" dengan role ${createdUser.role} berhasil ditambahkan!`,
     });
     setTimeout(() => setUserNotice(null), 3000);
   };
@@ -175,7 +177,7 @@ export const SettingsView: React.FC = () => {
     setShowEditPassword(false);
   };
 
-  const handleSaveEditUser = (e: React.FormEvent) => {
+  const handleSaveEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
     if (!editForm.name.trim()) {
@@ -184,15 +186,21 @@ export const SettingsView: React.FC = () => {
       return;
     }
 
+    const updates = {
+      name: editForm.name.trim(),
+      email: editForm.email.trim(),
+      role: editForm.role,
+      password: editForm.password.trim(),
+    };
+
+    await updateUser(editingUser.id, updates);
+
     const currentList = formData.teamMembers || formData.users || [];
     const updated = currentList.map((m) => {
       if (m.id === editingUser.id) {
         return {
           ...m,
-          name: editForm.name.trim(),
-          email: editForm.email.trim(),
-          role: editForm.role,
-          password: editForm.password.trim(),
+          ...updates,
         };
       }
       return m;
@@ -200,17 +208,6 @@ export const SettingsView: React.FC = () => {
 
     const newSettings = { ...formData, teamMembers: updated, users: updated };
     setFormData(newSettings);
-    updateSettings(newSettings);
-
-    // If current logged-in user, update AppContext currentUser
-    if (currentUser.id === editingUser.id) {
-      updateUser(editingUser.id, {
-        name: editForm.name.trim(),
-        email: editForm.email.trim(),
-        role: editForm.role,
-        password: editForm.password.trim(),
-      });
-    }
 
     setEditingUser(null);
     setUserNotice({
@@ -220,7 +217,7 @@ export const SettingsView: React.FC = () => {
     setTimeout(() => setUserNotice(null), 3000);
   };
 
-  const handleDeleteMember = (member: TeamMember) => {
+  const handleDeleteMember = async (member: TeamMember) => {
     const currentList = formData.teamMembers || formData.users || [];
     if (currentList.length <= 1) {
       setUserNotice({
@@ -244,19 +241,21 @@ export const SettingsView: React.FC = () => {
       return;
     }
 
+    const res = await deleteUser(member.id);
+    if (!res.success) {
+      setUserNotice({ type: 'error', message: res.message || 'Gagal menghapus pengguna.' });
+      setTimeout(() => setUserNotice(null), 3500);
+      setDeleteConfirmUser(null);
+      return;
+    }
+
     const updated = currentList.filter((m) => m.id !== member.id);
     const newSettings = { ...formData, teamMembers: updated, users: updated };
     setFormData(newSettings);
-    updateSettings(newSettings);
-
-    if (currentUser.id === member.id) {
-      deleteUser(member.id);
-    }
-
     setDeleteConfirmUser(null);
     setUserNotice({
       type: 'success',
-      message: `Akun pengguna "${member.name}" berhasil dihapus.`,
+      message: `Pengguna "${member.name}" berhasil dihapus.`,
     });
     setTimeout(() => setUserNotice(null), 3000);
   };
