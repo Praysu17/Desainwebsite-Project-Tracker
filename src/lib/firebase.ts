@@ -11,7 +11,22 @@ import {
   deleteDoc,
   getDocs,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseConfigFile from '../../firebase-applet-config.json';
+
+// Support both environment variables (for private/Vercel setups) and firebase-applet-config.json
+const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+
+const firebaseConfig = {
+  projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseConfigFile.projectId,
+  appId: env.VITE_FIREBASE_APP_ID || firebaseConfigFile.appId,
+  apiKey: env.VITE_FIREBASE_API_KEY || firebaseConfigFile.apiKey,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigFile.authDomain,
+  firestoreDatabaseId:
+    env.VITE_FIREBASE_DATABASE_ID || firebaseConfigFile.firestoreDatabaseId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigFile.storageBucket,
+  messagingSenderId:
+    env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigFile.messagingSenderId,
+};
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];

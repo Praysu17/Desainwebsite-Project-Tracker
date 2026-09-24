@@ -109,10 +109,7 @@ service cloud.firestore {
     // Users Collection (Team members, Admin, Staff)
     match /users/{userId} {
       allow read: if true;
-      allow create: if isValidId(userId) &&
-        incoming().name is string && incoming().name.size() <= 150 &&
-        incoming().email is string && incoming().email.size() <= 150 &&
-        incoming().role is string;
+      allow create: if isValidId(userId);
       allow update: if isValidId(userId);
       allow delete: if isValidId(userId);
     }

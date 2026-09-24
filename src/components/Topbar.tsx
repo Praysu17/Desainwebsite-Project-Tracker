@@ -169,18 +169,24 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
           )}
         </div>
 
-        {/* User Profile & Role Switcher */}
+        {/* User Profile & Role Menu */}
         <div className="relative">
           <button
             id="btn-user-profile-menu"
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-xl hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
+            className="flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-xl hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200 cursor-pointer"
           >
-            <img
-              src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80'}
-              alt={currentUser.name}
-              className="w-8 h-8 rounded-lg object-cover border border-cyan-500/40"
-            />
+            {currentUser.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-8 h-8 rounded-lg object-cover border border-cyan-500/40 shadow-2xs shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-2xs border border-cyan-500/30 shrink-0">
+                {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'SP'}
+              </div>
+            )}
             <div className="hidden sm:block text-left">
               <p className="text-xs font-semibold text-slate-800 leading-tight">
                 {currentUser.name}
@@ -196,9 +202,22 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="px-3 py-2 border-b border-slate-100 mb-1">
-                  <p className="text-xs font-semibold text-slate-800">{currentUser.name}</p>
-                  <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
+                <div className="px-3 py-2 border-b border-slate-100 mb-1 flex items-center gap-2.5">
+                  {currentUser.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt={currentUser.name}
+                      className="w-9 h-9 rounded-xl object-cover border border-cyan-500/40 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-2xs">
+                      {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'SP'}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-800 truncate">{currentUser.name}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
+                  </div>
                 </div>
 
                 <div className="space-y-1 mb-2 pb-2 border-b border-slate-100">
@@ -207,7 +226,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
                       setShowUserMenu(false);
                       setShowProfileModal(true);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-cyan-700 rounded-xl transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-cyan-700 rounded-xl transition-colors cursor-pointer"
                   >
                     <KeyRound className="w-3.5 h-3.5 text-cyan-600" />
                     <span>Ubah Profil & Password</span>
@@ -218,46 +237,21 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
                       setShowUserMenu(false);
                       setActiveTab('settings');
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-cyan-700 rounded-xl transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-cyan-700 rounded-xl transition-colors cursor-pointer"
                   >
                     <Users className="w-3.5 h-3.5 text-cyan-600" />
                     <span>Manajemen Pengguna</span>
                   </button>
                 </div>
 
-                <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Beralih Akun:
-                </div>
-
-                {settings.users.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      setCurrentUser(u);
-                      setShowUserMenu(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-xs rounded-xl transition-colors ${
-                      currentUser.id === u.id
-                        ? 'bg-cyan-50 text-cyan-900 font-semibold'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <UserCheck className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                      <span className="truncate">{u.name}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 shrink-0">{u.role}</span>
-                  </button>
-                ))}
-
-                <div className="pt-2 mt-2 border-t border-slate-100">
+                <div>
                   <button
                     id="btn-logout"
                     onClick={() => {
                       logout();
                       setShowUserMenu(false);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Keluar / Logout</span>

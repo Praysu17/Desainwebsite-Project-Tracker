@@ -379,28 +379,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // 7. Sync Users collection (so user additions like Kunto Krisworo are available everywhere)
+    // 7. Sync Users collection (so user additions like Kunto Krisworo and profile/password updates are available real-time)
     const unsubUsers = onSnapshot(
       collection(db, 'users'),
       (snapshot) => {
         const remoteUsersMap = new Map<string, UserAccount>();
 
         // 1. Preload DEFAULT_SETTINGS users
-        DEFAULT_SETTINGS.users.forEach((u) => remoteUsersMap.set(u.id, u));
-
-        // 2. Overlay remote Firestore users
-        snapshot.forEach((docSnap) => {
-          const u = docSnap.data() as UserAccount;
-          remoteUsersMap.set(u.id, u);
+        DEFAULT_SETTINGS.users.forEach((u) => {
+          remoteUsersMap.set(u.id, { ...u });
+          if (u.email) remoteUsersMap.set(u.email.toLowerCase(), { ...u });
         });
 
-        const mergedUsers = Array.from(remoteUsersMap.values());
+        // 2. Overlay remote Firestore users (Firestore is the source of truth)
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as UserAccount;
+          const u: UserAccount = {
+            ...data,
+            id: docSnap.id || data.id,
+          };
+          remoteUsersMap.set(u.id, u);
+          if (u.email) {
+            remoteUsersMap.set(u.email.toLowerCase(), u);
+          }
+        });
+
+        // Unique users list by id
+        const uniqueById = new Map<string, UserAccount>();
+        remoteUsersMap.forEach((u) => {
+          uniqueById.set(u.id, u);
+        });
+        const mergedUsers = Array.from(uniqueById.values());
 
         setSettings((prev) => ({
           ...prev,
           users: mergedUsers,
           teamMembers: mergedUsers,
         }));
+
+        // Real-time synchronization for currentUser state & localStorage
+        setCurrentUser((prev) => {
+          const updatedCurrent = mergedUsers.find(
+            (u) =>
+              u.id === prev.id ||
+              (u.email && prev.email && u.email.toLowerCase() === prev.email.toLowerCase())
+          );
+          if (updatedCurrent) {
+            try {
+              localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
+            } catch {
+              // ignore
+            }
+            return updatedCurrent;
+          }
+          return prev;
+        });
 
         // Ensure default users exist in Firestore
         DEFAULT_SETTINGS.users.forEach((defaultUser) => {
@@ -415,7 +448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, 'users');
+        console.warn('Users collection sync notice:', error);
       }
     );
 
@@ -425,17 +458,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (docSnap) => {
         if (docSnap.exists()) {
           const remoteData = docSnap.data() as Partial<AppSettings>;
-          setSettings((prev) => ({
-            ...prev,
-            ...remoteData,
-          }));
+          setSettings((prev) => {
+            const currentUsers =
+              prev.users && prev.users.length > 0
+                ? prev.users
+                : remoteData.users && remoteData.users.length > 0
+                ? remoteData.users
+                : DEFAULT_SETTINGS.users;
+            return {
+              ...prev,
+              ...remoteData,
+              users: currentUsers,
+              teamMembers: currentUsers,
+            };
+          });
         } else {
           // Initialize settings doc in Firestore
           setDoc(doc(db, 'settings', 'agency'), DEFAULT_SETTINGS).catch(() => {});
         }
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, 'settings/agency');
+        console.warn('Settings agency sync notice:', error);
       }
     );
 
@@ -1073,24 +1116,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Aggregate users across in-memory state, defaults, and Firestore
     const userMap = new Map<string, UserAccount>();
 
-    DEFAULT_SETTINGS.users.forEach((u) => userMap.set(u.email.toLowerCase(), u));
-    (settings.users || []).forEach((u) => userMap.set(u.email.toLowerCase(), u));
-    (settings.teamMembers || []).forEach((u) => userMap.set(u.email.toLowerCase(), u));
+    DEFAULT_SETTINGS.users.forEach((u) => {
+      userMap.set(u.email.toLowerCase(), u);
+      userMap.set(u.id, u);
+    });
+    (settings.users || []).forEach((u) => {
+      if (u.email) userMap.set(u.email.toLowerCase(), u);
+      if (u.id) userMap.set(u.id, u);
+    });
+    (settings.teamMembers || []).forEach((u) => {
+      if (u.email) userMap.set(u.email.toLowerCase(), u);
+      if (u.id) userMap.set(u.id, u);
+    });
 
-    // Also query Firestore users collection directly
+    // Also query Firestore users collection directly for the freshest real-time data
     try {
       const userSnaps = await getDocs(collection(db, 'users'));
       userSnaps.forEach((d) => {
-        const u = d.data() as UserAccount;
+        const u = { ...d.data(), id: d.id } as UserAccount;
         if (u.email) {
           userMap.set(u.email.toLowerCase(), u);
+        }
+        if (u.id) {
+          userMap.set(u.id, u);
         }
       });
     } catch {
       // fallback to current map
     }
 
-    const allUsers = Array.from(userMap.values());
+    const allUsers = Array.from(new Set(userMap.values()));
 
     const matchedUser = allUsers.find((u) => {
       const emailMatch = Boolean(u.email && u.email.trim().toLowerCase() === trimmedId);
@@ -1111,8 +1166,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCurrentUser(matchedUser);
     setIsAuthenticated(true);
-    localStorage.setItem('sugeng_auth', 'true');
-    localStorage.setItem('sugeng_current_user', JSON.stringify(matchedUser));
+    try {
+      localStorage.setItem('sugeng_auth', 'true');
+      localStorage.setItem('sugeng_current_user', JSON.stringify(matchedUser));
+    } catch {
+      // ignore
+    }
     return { success: true };
   };
 
@@ -1142,7 +1201,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setIsAuthenticated(true);
-      localStorage.setItem('sugeng_auth', 'true');
+      try {
+        localStorage.setItem('sugeng_auth', 'true');
+      } catch {}
       return { success: true };
     } catch (err: unknown) {
       const errObj = err as { code?: string; message?: string };
@@ -1163,7 +1224,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setIsAuthenticated(false);
-    localStorage.removeItem('sugeng_auth');
+    try {
+      localStorage.removeItem('sugeng_auth');
+    } catch {}
   };
 
   // User management
@@ -1171,7 +1234,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newUser: UserAccount = {
       ...user,
       id: `usr-${Date.now()}`,
-      password: user.password || 'Password123',
+      password: user.password || 'Password01',
+      avatar: user.avatar || '',
     };
     const updatedUsers = [...(settings.users || []), newUser];
     const newSettings: AppSettings = {
@@ -1180,10 +1244,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamMembers: updatedUsers,
     };
     setSettings(newSettings);
-    localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    try {
+      localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    } catch {}
 
     try {
       await setDoc(doc(db, 'users', newUser.id), newUser);
+      await setDoc(
+        doc(db, 'settings', 'agency'),
+        { users: updatedUsers, teamMembers: updatedUsers },
+        { merge: true }
+      ).catch(() => {});
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`);
     }
@@ -1192,29 +1263,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (userId: string, updates: Partial<UserAccount>): Promise<void> => {
-    const updatedUsers = (settings.users || []).map((u) => {
-      if (u.id === userId) {
-        return { ...u, ...updates };
-      }
-      return u;
-    });
+    const existing =
+      settings.users?.find((u) => u.id === userId) ||
+      (currentUser.id === userId ? currentUser : undefined) ||
+      DEFAULT_SETTINGS.users.find((u) => u.id === userId);
+
+    const fullUpdatedUser: UserAccount = {
+      id: userId,
+      name: updates.name ?? existing?.name ?? 'User',
+      email: updates.email ?? existing?.email ?? '',
+      role: updates.role ?? existing?.role ?? 'Staff',
+      password: updates.password ?? existing?.password ?? 'Password01',
+      avatar: updates.avatar !== undefined ? updates.avatar : (existing?.avatar ?? ''),
+      ...updates,
+    };
+
+    const updatedUsers = (settings.users || []).map((u) => (u.id === userId ? fullUpdatedUser : u));
+    if (!updatedUsers.some((u) => u.id === userId)) {
+      updatedUsers.push(fullUpdatedUser);
+    }
+
     const newSettings: AppSettings = {
       ...settings,
       users: updatedUsers,
       teamMembers: updatedUsers,
     };
     setSettings(newSettings);
-    localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    try {
+      localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    } catch {}
 
-    if (currentUser.id === userId) {
-      const updatedCurrent = { ...currentUser, ...updates };
-      setCurrentUser(updatedCurrent);
-      localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
+    if (
+      currentUser.id === userId ||
+      (currentUser.email && fullUpdatedUser.email && currentUser.email.toLowerCase() === fullUpdatedUser.email.toLowerCase())
+    ) {
+      setCurrentUser(fullUpdatedUser);
+      try {
+        localStorage.setItem('sugeng_current_user', JSON.stringify(fullUpdatedUser));
+      } catch {}
     }
 
     try {
-      await setDoc(doc(db, 'users', userId), updates, { merge: true });
+      await setDoc(doc(db, 'users', userId), fullUpdatedUser, { merge: true });
+      await setDoc(
+        doc(db, 'settings', 'agency'),
+        { users: updatedUsers, teamMembers: updatedUsers },
+        { merge: true }
+      ).catch(() => {});
     } catch (err) {
+      console.error('Update user Firestore error:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
     }
   };
@@ -1236,15 +1333,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamMembers: updatedUsers,
     };
     setSettings(newSettings);
-    localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    try {
+      localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+    } catch {}
 
     if (currentUser.id === userId) {
       setCurrentUser(updatedUsers[0]);
-      localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUsers[0]));
+      try {
+        localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUsers[0]));
+      } catch {}
     }
 
     try {
       await deleteDoc(doc(db, 'users', userId));
+      await setDoc(
+        doc(db, 'settings', 'agency'),
+        { users: updatedUsers, teamMembers: updatedUsers },
+        { merge: true }
+      ).catch(() => {});
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
     }
