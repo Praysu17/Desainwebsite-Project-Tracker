@@ -1,0 +1,6 @@
+{
+  "name": "SP Digital",
+  "description": "SP Digital - Digital Partner Solution. Platform manajemen klien, proyek, proposal penawaran, invoice tagihan, dan keuangan digital agency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
