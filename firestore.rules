@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Helper Functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'pray.sugeng17@gmail.com' ||
+        request.auth.token.email == 'sugeng@agency.com'
+      );
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Test connection document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Clients Collection
+    match /clients/{clientId} {
+      allow read: if true;
+      allow create: if isValidId(clientId) &&
+        incoming().name is string && incoming().name.size() <= 200 &&
+        incoming().contact is string && incoming().contact.size() <= 100 &&
+        incoming().status is string;
+      allow update: if isValidId(clientId) &&
+        incoming().name is string && incoming().name.size() <= 200 &&
+        incoming().contact is string && incoming().contact.size() <= 100;
+      allow delete: if isValidId(clientId);
+    }
+
+    // Projects Collection
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create: if isValidId(projectId) &&
+        incoming().clientId is string &&
+        incoming().clientName is string && incoming().clientName.size() <= 200 &&
+        incoming().serviceType is string && incoming().serviceType.size() <= 200;
+      allow update: if isValidId(projectId);
+      allow delete: if isValidId(projectId);
+    }
+
+    // Incomes Collection
+    match /incomes/{incomeId} {
+      allow read: if true;
+      allow create: if isValidId(incomeId) &&
+        incoming().amount is number && incoming().amount >= 0 &&
+        incoming().clientName is string && incoming().clientName.size() <= 200;
+      allow update: if isValidId(incomeId) &&
+        incoming().amount is number && incoming().amount >= 0;
+      allow delete: if isValidId(incomeId);
+    }
+
+    // Expenses Collection
+    match /expenses/{expenseId} {
+      allow read: if true;
+      allow create: if isValidId(expenseId) &&
+        incoming().amount is number && incoming().amount >= 0 &&
+        incoming().category is string && incoming().category.size() <= 100;
+      allow update: if isValidId(expenseId) &&
+        incoming().amount is number && incoming().amount >= 0;
+      allow delete: if isValidId(expenseId);
+    }
+
+    // Proposals Collection (Accessible by public clients via shareToken)
+    match /proposals/{proposalId} {
+      allow read: if true;
+      allow create: if isValidId(proposalId) &&
+        incoming().proposalNumber is string &&
+        incoming().clientName is string &&
+        incoming().totalValue is number &&
+        incoming().shareToken is string;
+      allow update: if isValidId(proposalId);
+      allow delete: if isValidId(proposalId);
+    }
+
+    // Invoices Collection (Accessible by public clients via shareToken)
+    match /invoices/{invoiceId} {
+      allow read: if true;
+      allow create: if isValidId(invoiceId) &&
+        incoming().invoiceNumber is string &&
+        incoming().clientName is string &&
+        incoming().totalAmount is number &&
+        incoming().shareToken is string;
+      allow update: if isValidId(invoiceId);
+      allow delete: if isValidId(invoiceId);
+    }
+
+    // Users Collection (Team members, Admin, Staff)
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isValidId(userId) &&
+        incoming().name is string && incoming().name.size() <= 150 &&
+        incoming().email is string && incoming().email.size() <= 150 &&
+        incoming().role is string;
+      allow update: if isValidId(userId);
+      allow delete: if isValidId(userId);
+    }
+
+    // Settings Collection (Global agency configurations)
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow create: if isValidId(settingsId) &&
+        incoming().agencyName is string && incoming().agencyName.size() <= 150;
+      allow update: if isValidId(settingsId);
+      allow delete: if false;
+    }
+  }
+}

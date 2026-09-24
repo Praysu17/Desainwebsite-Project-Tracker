@@ -1,0 +1,191 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Agency client profile and business relationship information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "contact": { "type": "string", "maxLength": 100 },
+        "firstService": { "type": "string", "maxLength": 200 },
+        "firstOrderDate": { "type": "string", "maxLength": 50 },
+        "lastOrderDate": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["Aktif", "Perlu Follow-up", "Tidak Aktif"] },
+        "nextFollowUpDate": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "name", "contact", "status"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Agency project tracker record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectNo": { "type": "number" },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 200 },
+        "serviceType": { "type": "string", "maxLength": 200 },
+        "pic": { "type": "string", "maxLength": 100 },
+        "startDate": { "type": "string", "maxLength": 50 },
+        "deadline": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["Deal", "Proses", "Revisi", "Selesai", "Batal"] },
+        "progress": { "type": "number" },
+        "projectValue": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["Belum DP", "DP Diterima", "Lunas"] },
+        "dpReceived": { "type": "number" },
+        "remainingPayment": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "clientId", "clientName", "serviceType", "status", "projectValue"]
+    },
+    "IncomeTransaction": {
+      "title": "IncomeTransaction",
+      "description": "Financial income cash flow entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 50 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 200 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "projectTitle": { "type": "string", "maxLength": 200 },
+        "invoiceId": { "type": "string", "maxLength": 128 },
+        "incomeType": { "type": "string", "enum": ["DP", "Pelunasan", "Retainer Bulanan", "Lainnya"] },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["Transfer Bank", "QRIS", "E-Wallet", "Cash"] },
+        "notes": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "date", "clientName", "incomeType", "amount", "method"]
+    },
+    "ExpenseTransaction": {
+      "title": "ExpenseTransaction",
+      "description": "Financial expense outflow entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["Transfer Bank", "QRIS", "E-Wallet", "Cash"] },
+        "notes": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "date", "category", "description", "amount", "method"]
+    },
+    "Proposal": {
+      "title": "Proposal",
+      "description": "Commercial proposal with client share link and line items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "proposalNumber": { "type": "string", "maxLength": 100 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 200 },
+        "clientContact": { "type": "string", "maxLength": 100 },
+        "projectTitle": { "type": "string", "maxLength": 200 },
+        "totalValue": { "type": "number" },
+        "terms": { "type": "string", "maxLength": 4000 },
+        "expiryDate": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["Draft", "Terkirim", "Dilihat", "Disetujui", "Ditolak"] },
+        "shareToken": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "viewedAt": { "type": "string", "maxLength": 100 },
+        "respondedAt": { "type": "string", "maxLength": 100 },
+        "rejectionReason": { "type": "string", "maxLength": 1000 },
+        "generatedInvoiceId": { "type": "string", "maxLength": 128 },
+        "invoiceId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "proposalNumber", "clientName", "projectTitle", "totalValue", "status", "shareToken"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Commercial invoice with payment records and share token",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "maxLength": 100 },
+        "proposalId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 200 },
+        "clientContact": { "type": "string", "maxLength": 100 },
+        "projectTitle": { "type": "string", "maxLength": 200 },
+        "totalAmount": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["Draft", "Terkirim", "Belum Bayar", "Belum Dibayar", "DP Diterima", "Lunas", "Jatuh Tempo"] },
+        "shareToken": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "paidAt": { "type": "string", "maxLength": 50 },
+        "paymentNotes": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "invoiceNumber", "clientName", "projectTitle", "totalAmount", "status", "shareToken"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User profile with role and access credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["Owner/Admin", "Staff", "Admin", "Project Manager", "Freelancer"] },
+        "avatar": { "type": "string", "maxLength": 500 },
+        "password": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global agency branding, bank accounts, and configurations",
+      "type": "object",
+      "properties": {
+        "agencyName": { "type": "string", "maxLength": 150 },
+        "agencyTagline": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 500 },
+        "address": { "type": "string", "maxLength": 500 },
+        "contactEmail": { "type": "string", "maxLength": 150 },
+        "contactPhone": { "type": "string", "maxLength": 50 },
+        "brandColor": { "type": "string", "maxLength": 50 },
+        "accentColor": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["agencyName"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Agency clients collection"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Agency projects collection"
+    },
+    "/incomes/{incomeId}": {
+      "schema": "IncomeTransaction",
+      "description": "Financial income records"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "ExpenseTransaction",
+      "description": "Financial expense records"
+    },
+    "/proposals/{proposalId}": {
+      "schema": "Proposal",
+      "description": "Commercial proposals and share tokens"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoices and client payment tracking"
+    },
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Team members and user accounts"
+    },
+    "/settings/{settingsId}": {
+      "schema": "AppSettings",
+      "description": "Agency settings and configurations"
+    }
+  }
+}

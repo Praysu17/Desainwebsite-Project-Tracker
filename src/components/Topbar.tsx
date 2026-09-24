@@ -32,6 +32,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
     notifications,
     clearNotification,
     setActiveTab,
+    isCloudSynced,
   } = useApp();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -75,6 +76,15 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobile = () => {} }) => 
 
       {/* Right: Notifications, User Profile & Actions */}
       <div className="flex items-center gap-2 md:gap-4">
+        {/* Firebase Cloud Sync Badge */}
+        <div
+          title={isCloudSynced ? 'Database Cloud Firestore Tersinkronisasi' : 'Menghubungkan ke Cloud Firestore...'}
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-medium select-none"
+        >
+          <span className={`w-2 h-2 rounded-full ${isCloudSynced ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+          <span className="hidden md:inline">{isCloudSynced ? 'Cloud Firebase' : 'Sinkronisasi...'}</span>
+        </div>
+
         {/* Notification Bell */}
         <div className="relative">
           <button

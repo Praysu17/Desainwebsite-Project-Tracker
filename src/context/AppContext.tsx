@@ -1,5 +1,21 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+} from 'firebase/firestore';
+import { signInWithPopup } from 'firebase/auth';
+import {
+  db,
+  auth,
+  googleProvider,
+  handleFirestoreError,
+  OperationType,
+} from '../lib/firebase';
+import {
   DEFAULT_SETTINGS,
   INITIAL_CLIENTS,
   INITIAL_EXPENSES,
@@ -15,7 +31,6 @@ import {
   ExpenseTransaction,
   IncomeTransaction,
   Invoice,
-  PartnerSplit,
   Project,
   Proposal,
   UserAccount,
@@ -32,29 +47,33 @@ interface AppContextType {
   setActiveTab: (tab: ActiveTab) => void;
   selectedClientId: string | null;
   setSelectedClientId: (id: string | null) => void;
-  
+
+  // Cloud Status
+  isCloudSynced: boolean;
+
   // Public Sharing Links & Mode
   publicShare: {
     type: 'proposal' | 'invoice';
     token: string;
   } | null;
   setPublicShare: (share: { type: 'proposal' | 'invoice'; token: string } | null) => void;
-  
+
   // Auth
   currentUser: UserAccount;
   setCurrentUser: (user: UserAccount) => void;
   isAuthenticated: boolean;
   setIsAuthenticated: (auth: boolean) => void;
-  login: (identifier: string, pass: string) => { success: boolean; message?: string };
+  login: (identifier: string, pass: string) => Promise<{ success: boolean; message?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
-  addUser: (user: Omit<UserAccount, 'id'>) => UserAccount;
-  updateUser: (userId: string, updates: Partial<UserAccount>) => void;
-  deleteUser: (userId: string) => { success: boolean; message?: string };
-  
+  addUser: (user: Omit<UserAccount, 'id'>) => Promise<UserAccount>;
+  updateUser: (userId: string, updates: Partial<UserAccount>) => Promise<void>;
+  deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
+
   // Search
   globalSearch: string;
   setGlobalSearch: (q: string) => void;
-  
+
   // Notifications
   notifications: Array<{
     id: string;
@@ -68,85 +87,60 @@ interface AppContextType {
     whatsappUrl?: string;
   }>;
   clearNotification: (id: string) => void;
-  
+
   // Data Collections
   clients: Client[];
-  addClient: (client: Omit<Client, 'id' | 'completedOrdersCount' | 'lifetimeValue' | 'avgOrderValue'>) => string;
-  updateClient: (id: string, updates: Partial<Client>) => void;
-  deleteClient: (id: string) => void;
-  
+  addClient: (client: Omit<Client, 'id' | 'completedOrdersCount' | 'lifetimeValue' | 'avgOrderValue'>) => Promise<string>;
+  updateClient: (id: string, updates: Partial<Client>) => Promise<void>;
+  deleteClient: (id: string) => Promise<void>;
+
   projects: Project[];
-  addProject: (project: Omit<Project, 'id' | 'projectNo' | 'remainingPayment'>) => string;
-  updateProject: (id: string, updates: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
-  
+  addProject: (project: Omit<Project, 'id' | 'projectNo' | 'remainingPayment'>) => Promise<string>;
+  updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+
   incomes: IncomeTransaction[];
-  addIncome: (income: Omit<IncomeTransaction, 'id'>) => string;
-  updateIncome: (id: string, updates: Partial<IncomeTransaction>) => void;
-  deleteIncome: (id: string) => void;
-  
+  addIncome: (income: Omit<IncomeTransaction, 'id'>) => Promise<string>;
+  updateIncome: (id: string, updates: Partial<IncomeTransaction>) => Promise<void>;
+  deleteIncome: (id: string) => Promise<void>;
+
   expenses: ExpenseTransaction[];
-  addExpense: (expense: Omit<ExpenseTransaction, 'id'>) => string;
-  updateExpense: (id: string, updates: Partial<ExpenseTransaction>) => void;
-  deleteExpense: (id: string) => void;
-  
+  addExpense: (expense: Omit<ExpenseTransaction, 'id'>) => Promise<string>;
+  updateExpense: (id: string, updates: Partial<ExpenseTransaction>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+
   proposals: Proposal[];
-  addProposal: (proposal: Omit<Proposal, 'id' | 'proposalNumber' | 'shareToken' | 'createdAt'>) => Proposal;
-  updateProposal: (id: string, updates: Partial<Proposal>) => void;
-  deleteProposal: (id: string) => boolean;
-  acceptProposal: (token: string) => {
+  addProposal: (proposal: Omit<Proposal, 'id' | 'proposalNumber' | 'shareToken' | 'createdAt'>) => Promise<Proposal>;
+  updateProposal: (id: string, updates: Partial<Proposal>) => Promise<void>;
+  deleteProposal: (id: string) => Promise<boolean>;
+  acceptProposal: (token: string) => Promise<{
     proposal: Proposal;
     invoice: Invoice;
     invoiceToken: string;
     invoiceNumber: string;
     whatsappUrl: string;
-  } | null;
-  rejectProposal: (token: string, reason?: string) => Proposal | null;
-  markProposalViewed: (token: string) => void;
-  recordProposalView: (token: string) => void;
-  
+  } | null>;
+  rejectProposal: (token: string, reason?: string) => Promise<Proposal | null>;
+  markProposalViewed: (token: string) => Promise<void>;
+  recordProposalView: (token: string) => Promise<void>;
+
   invoices: Invoice[];
-  addInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'shareToken' | 'createdAt'>) => Invoice;
-  updateInvoice: (id: string, updates: Partial<Invoice>) => void;
-  deleteInvoice: (id: string) => boolean;
-  recordInvoicePayment: (invoiceId: string, amount: number, method: IncomeTransaction['method'], notes?: string) => void;
-  markInvoiceAsPaid: (invoiceId: string, method?: IncomeTransaction['method']) => void;
-  
+  addInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'shareToken' | 'createdAt'>) => Promise<Invoice>;
+  updateInvoice: (id: string, updates: Partial<Invoice>) => Promise<void>;
+  deleteInvoice: (id: string) => Promise<boolean>;
+  recordInvoicePayment: (invoiceId: string, amount: number, method: IncomeTransaction['method'], notes?: string) => Promise<void>;
+  markInvoiceAsPaid: (invoiceId: string, method?: IncomeTransaction['method']) => Promise<void>;
+
   settings: AppSettings;
-  updateSettings: (updates: Partial<AppSettings>) => void;
+  updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
   resetAllDataToSeed: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Purge previous mock/demo data once so user enters clean live production mode with Login view
-if (typeof window !== 'undefined' && !localStorage.getItem('spdigital_live_ready_v3')) {
-  localStorage.removeItem('sugeng_clients');
-  localStorage.removeItem('sugeng_projects');
-  localStorage.removeItem('sugeng_incomes');
-  localStorage.removeItem('sugeng_expenses');
-  localStorage.removeItem('sugeng_proposals');
-  localStorage.removeItem('sugeng_invoices');
-  localStorage.removeItem('sugeng_notifications');
-  localStorage.removeItem('sugeng_auth'); // Reset authentication session so initial view is Login!
-
-  // Clean settings so only 1 user (Sugeng Prayitno) exists
-  const rawSettings = localStorage.getItem('sugeng_settings');
-  if (rawSettings) {
-    try {
-      const parsed = JSON.parse(rawSettings);
-      parsed.users = [DEFAULT_SETTINGS.users[0]];
-      parsed.teamMembers = [DEFAULT_SETTINGS.users[0]];
-      localStorage.setItem('sugeng_settings', JSON.stringify(parsed));
-    } catch {
-      localStorage.removeItem('sugeng_settings');
-    }
-  }
-  localStorage.setItem('sugeng_current_user', JSON.stringify(DEFAULT_SETTINGS.users[0]));
-  localStorage.setItem('spdigital_live_ready_v3', 'true');
-
-  // Reset URL back to root if it was lingering on an old deleted share link
-  if (window.location.pathname.startsWith('/share/')) {
+// Ensure URL does not stay on a broken share token
+if (typeof window !== 'undefined') {
+  if (window.location.pathname.startsWith('/share/') && !window.location.pathname.split('/')[3]) {
     try {
       window.history.replaceState({}, '', '/');
     } catch {
@@ -156,7 +150,9 @@ if (typeof window !== 'undefined' && !localStorage.getItem('spdigital_live_ready
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load data from localStorage or fallback to seeds (which are empty for live)
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
+
+  // Local state initialized from localStorage for fast initial render
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('sugeng_clients');
     return saved ? JSON.parse(saved) : INITIAL_CLIENTS;
@@ -191,54 +187,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('sugeng_settings');
     let loadedSettings: AppSettings = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
 
-    // Ensure Agency Name and Tagline are SP Digital and Digital Partner Solution
-    if (
-      !loadedSettings.agencyName ||
-      loadedSettings.agencyName === 'Sugeng Project Tracker' ||
-      loadedSettings.agencyName.toLowerCase().includes('sugeng project tracker')
-    ) {
-      loadedSettings.agencyName = 'SP Digital';
+    if (!loadedSettings.agencyName) loadedSettings.agencyName = 'SP Digital';
+    if (!loadedSettings.agencyTagline) loadedSettings.agencyTagline = 'Digital Partner Solution';
+    if (!loadedSettings.users || loadedSettings.users.length === 0) {
+      loadedSettings.users = [...DEFAULT_SETTINGS.users];
     }
-    if (
-      !loadedSettings.agencyTagline ||
-      loadedSettings.agencyTagline === 'Digital Agency Operations & Client Portal' ||
-      loadedSettings.agencyTagline.includes('Digital Agency Operations')
-    ) {
-      loadedSettings.agencyTagline = 'Digital Partner Solution';
-    }
-
-    // Default contact and bank fields if missing
-    loadedSettings.contactEmail = loadedSettings.contactEmail || 'hello@spdigital.id';
-    loadedSettings.agencyEmail = loadedSettings.agencyEmail || 'hello@spdigital.id';
-    loadedSettings.agencyPhone = loadedSettings.agencyPhone || '+62 812-3456-7890';
-    loadedSettings.agencyAddress =
-      loadedSettings.agencyAddress || 'Jl. Pemuda No. 88, Surabaya, Jawa Timur, Indonesia';
-    loadedSettings.bankName = loadedSettings.bankName || 'Bank Central Asia (BCA)';
-    loadedSettings.bankAccount = loadedSettings.bankAccount || '829-019-8273';
-    loadedSettings.bankHolder = loadedSettings.bankHolder || 'PRAYUGO SUGENG';
-    loadedSettings.invoiceDefaultNotes =
-      loadedSettings.invoiceDefaultNotes ||
-      'Silakan lakukan transfer ke salah satu rekening resmi kami di atas. Cantumkan nomor invoice pada berita transfer untuk percepatan verifikasi sistem.';
-
-    // Ensure ONLY 1 User exists: Sugeng Prayitno as Owner/Admin with Password01
-    const existingSugeng = (loadedSettings.users || []).find(
-      (u) =>
-        u.name.toLowerCase().includes('sugeng') ||
-        u.email === 'sugeng@agency.com' ||
-        u.role === 'Owner/Admin'
-    );
-
-    const soleAdmin: UserAccount = {
-      id: 'usr-1',
-      name: 'Sugeng Prayitno',
-      email: existingSugeng?.email || 'sugeng@agency.com',
-      role: 'Owner/Admin',
-      password: existingSugeng?.password || 'Password01',
-      avatar: existingSugeng?.avatar || '',
-    };
-
-    loadedSettings.users = [soleAdmin];
-    loadedSettings.teamMembers = [soleAdmin];
+    loadedSettings.teamMembers = loadedSettings.users;
     return loadedSettings;
   });
 
@@ -247,7 +201,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        if (parsed && parsed.id && parsed.name === 'Sugeng Prayitno') return parsed;
+        if (parsed && parsed.id && parsed.name) return parsed;
       } catch (e) {
         // ignore
       }
@@ -260,39 +214,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved === 'true';
   });
 
-  useEffect(() => {
-    localStorage.setItem('sugeng_current_user', JSON.stringify(currentUser));
-  }, [currentUser]);
-
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState<string>('');
 
-  const [notifications, setNotifications] = useState<Array<{ id: string; title: string; message: string; type: 'info' | 'warning' | 'alert' | 'success'; date: string }>>([]);
+  const [notifications, setNotifications] = useState<
+    Array<{
+      id: string;
+      title: string;
+      message: string;
+      type: 'info' | 'warning' | 'alert' | 'success';
+      date: string;
+      invoiceToken?: string;
+      invoiceNumber?: string;
+      clientContact?: string;
+      whatsappUrl?: string;
+    }>
+  >([]);
 
-  // Handle URL share token detection (e.g. /share/proposal/{token} or ?share=proposal&token=...)
+  // Public share URL detection
   const [publicShare, setPublicShare] = useState<{ type: 'proposal' | 'invoice'; token: string } | null>(() => {
     if (typeof window === 'undefined') return null;
-    
-    // Check search params first
     const params = new URLSearchParams(window.location.search);
     const shareParam = params.get('share');
     const tokenParam = params.get('token');
     if (shareParam && tokenParam && (shareParam === 'proposal' || shareParam === 'invoice')) {
       return { type: shareParam as 'proposal' | 'invoice', token: tokenParam };
     }
-
-    // Check path /share/proposal/:token or /share/invoice/:token
     const path = window.location.pathname;
     const match = path.match(/^\/share\/(proposal|invoice)\/([^/]+)/);
     if (match && match[2]) {
       return { type: match[1] as 'proposal' | 'invoice', token: match[2] };
     }
-
     return null;
   });
 
-  // Sync state to localStorage
+  // LocalStorage backups
   useEffect(() => {
     localStorage.setItem('sugeng_clients', JSON.stringify(clients));
   }, [clients]);
@@ -325,15 +282,171 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('sugeng_auth', String(isAuthenticated));
   }, [isAuthenticated]);
 
-  // Enrich clients with automatic calculated metrics
+  useEffect(() => {
+    localStorage.setItem('sugeng_current_user', JSON.stringify(currentUser));
+  }, [currentUser]);
+
+  // Real-time Firebase Firestore Sync Listeners
+  useEffect(() => {
+    // 1. Sync Clients
+    const unsubClients = onSnapshot(
+      collection(db, 'clients'),
+      (snapshot) => {
+        setIsCloudSynced(true);
+        const remoteClients: Client[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteClients.push(docSnap.data() as Client);
+        });
+        setClients(remoteClients);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'clients');
+      }
+    );
+
+    // 2. Sync Projects
+    const unsubProjects = onSnapshot(
+      collection(db, 'projects'),
+      (snapshot) => {
+        const remoteProjects: Project[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteProjects.push(docSnap.data() as Project);
+        });
+        setProjects(remoteProjects);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'projects');
+      }
+    );
+
+    // 3. Sync Incomes
+    const unsubIncomes = onSnapshot(
+      collection(db, 'incomes'),
+      (snapshot) => {
+        const remoteIncomes: IncomeTransaction[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteIncomes.push(docSnap.data() as IncomeTransaction);
+        });
+        setIncomes(remoteIncomes);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'incomes');
+      }
+    );
+
+    // 4. Sync Expenses
+    const unsubExpenses = onSnapshot(
+      collection(db, 'expenses'),
+      (snapshot) => {
+        const remoteExpenses: ExpenseTransaction[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteExpenses.push(docSnap.data() as ExpenseTransaction);
+        });
+        setExpenses(remoteExpenses);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'expenses');
+      }
+    );
+
+    // 5. Sync Proposals
+    const unsubProposals = onSnapshot(
+      collection(db, 'proposals'),
+      (snapshot) => {
+        const remoteProposals: Proposal[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteProposals.push(docSnap.data() as Proposal);
+        });
+        setProposals(remoteProposals);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'proposals');
+      }
+    );
+
+    // 6. Sync Invoices
+    const unsubInvoices = onSnapshot(
+      collection(db, 'invoices'),
+      (snapshot) => {
+        const remoteInvoices: Invoice[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteInvoices.push(docSnap.data() as Invoice);
+        });
+        setInvoices(remoteInvoices);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'invoices');
+      }
+    );
+
+    // 7. Sync Users collection (so user additions like Kunto Krisworo are available everywhere)
+    const unsubUsers = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        if (snapshot.empty) {
+          // Seed the initial Owner/Admin Sugeng Prayitno into Firestore
+          const defaultAdmin = DEFAULT_SETTINGS.users[0];
+          setDoc(doc(db, 'users', defaultAdmin.id), defaultAdmin).catch(() => {});
+        } else {
+          const remoteUsers: UserAccount[] = [];
+          snapshot.forEach((docSnap) => {
+            remoteUsers.push(docSnap.data() as UserAccount);
+          });
+          setSettings((prev) => ({
+            ...prev,
+            users: remoteUsers,
+            teamMembers: remoteUsers,
+          }));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'users');
+      }
+    );
+
+    // 8. Sync Settings document
+    const unsubSettings = onSnapshot(
+      doc(db, 'settings', 'agency'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const remoteData = docSnap.data() as Partial<AppSettings>;
+          setSettings((prev) => ({
+            ...prev,
+            ...remoteData,
+          }));
+        } else {
+          // Initialize settings doc in Firestore
+          setDoc(doc(db, 'settings', 'agency'), DEFAULT_SETTINGS).catch(() => {});
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'settings/agency');
+      }
+    );
+
+    return () => {
+      unsubClients();
+      unsubProjects();
+      unsubIncomes();
+      unsubExpenses();
+      unsubProposals();
+      unsubInvoices();
+      unsubUsers();
+      unsubSettings();
+    };
+  }, []);
+
+  // Enriched derived data
   const enrichedClients = useMemo(() => {
     return clients.map((c) => {
-      const clientProjects = projects.filter((p) => p.clientId === c.id || p.clientName.toLowerCase() === c.name.toLowerCase());
+      const clientProjects = projects.filter(
+        (p) => p.clientId === c.id || p.clientName.toLowerCase() === c.name.toLowerCase()
+      );
       const completedOrdersCount = clientProjects.filter((p) => p.status === 'Selesai').length;
       const lifetimeValue = clientProjects.reduce((sum, p) => sum + (p.projectValue || 0), 0);
-      const avgOrderValue = completedOrdersCount > 0 ? Math.round(lifetimeValue / completedOrdersCount) : 0;
-      
-      // Also get latest order date
+      const avgOrderValue =
+        completedOrdersCount > 0 ? Math.round(lifetimeValue / completedOrdersCount) : 0;
+
       const sortedDates = clientProjects
         .map((p) => p.startDate)
         .filter(Boolean)
@@ -352,7 +465,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [clients, projects]);
 
-  // Enrich projects ensuring remainingPayment is strictly projectValue - dpReceived
   const enrichedProjects = useMemo(() => {
     return projects.map((p) => ({
       ...p,
@@ -360,7 +472,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, [projects]);
 
-  // Enrich invoices with auto overdue check
   const enrichedInvoices = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     return invoices.map((inv) => {
@@ -372,22 +483,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [invoices]);
 
   // Client actions
-  const addClient = (data: Omit<Client, 'id' | 'completedOrdersCount' | 'lifetimeValue' | 'avgOrderValue'>) => {
+  const addClient = async (
+    data: Omit<Client, 'id' | 'completedOrdersCount' | 'lifetimeValue' | 'avgOrderValue'>
+  ): Promise<string> => {
     const newId = `cli-${Date.now().toString().slice(-4)}`;
     const newClient: Client = {
       ...data,
       id: newId,
     };
     setClients((prev) => [newClient, ...prev]);
+    try {
+      await setDoc(doc(db, 'clients', newId), newClient);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `clients/${newId}`);
+    }
     return newId;
   };
 
-  const updateClient = (id: string, updates: Partial<Client>) => {
+  const updateClient = async (id: string, updates: Partial<Client>): Promise<void> => {
     setClients((prev) =>
       prev.map((c) => {
         if (c.id === id) {
           const updated = { ...c, ...updates };
-          // If name changed, update all projects referencing this client name
           if (updates.name && updates.name !== c.name) {
             setProjects((projList) =>
               projList.map((p) => (p.clientId === id ? { ...p, clientName: updates.name! } : p))
@@ -398,19 +515,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       })
     );
+    try {
+      await setDoc(doc(db, 'clients', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clients/${id}`);
+    }
   };
 
-  const deleteClient = (id: string) => {
+  const deleteClient = async (id: string): Promise<void> => {
     setClients((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'clients', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `clients/${id}`);
+    }
   };
 
   // Project actions
-  const addProject = (data: Omit<Project, 'id' | 'projectNo' | 'remainingPayment'>) => {
+  const addProject = async (
+    data: Omit<Project, 'id' | 'projectNo' | 'remainingPayment'>
+  ): Promise<string> => {
     const maxNo = projects.reduce((max, p) => Math.max(max, p.projectNo || 0), 0);
     const newId = `prj-${Date.now().toString().slice(-4)}`;
     const remainingPayment = Math.max(0, data.projectValue - (data.dpReceived || 0));
-    
-    // Determine payment status
+
     let paymentStatus = data.paymentStatus;
     if (data.dpReceived >= data.projectValue && data.projectValue > 0) {
       paymentStatus = 'Lunas';
@@ -430,7 +558,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setProjects((prev) => [newProject, ...prev]);
 
-    // If DP received > 0 on creation, create auto income transaction
+    try {
+      await setDoc(doc(db, 'projects', newId), newProject);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `projects/${newId}`);
+    }
+
     if (data.dpReceived > 0) {
       addIncome({
         date: data.startDate || new Date().toISOString().split('T')[0],
@@ -448,14 +581,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newId;
   };
 
-  const updateProject = (id: string, updates: Partial<Project>) => {
+  const updateProject = async (id: string, updates: Partial<Project>): Promise<void> => {
     setProjects((prev) =>
       prev.map((p) => {
         if (p.id === id) {
           const val = updates.projectValue !== undefined ? updates.projectValue : p.projectValue;
           const dp = updates.dpReceived !== undefined ? updates.dpReceived : p.dpReceived;
           const remainingPayment = Math.max(0, val - dp);
-          
+
           let paymentStatus = updates.paymentStatus || p.paymentStatus;
           if (dp >= val && val > 0) {
             paymentStatus = 'Lunas';
@@ -477,52 +610,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return p;
       })
     );
+
+    try {
+      await setDoc(doc(db, 'projects', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `projects/${id}`);
+    }
   };
 
-  const deleteProject = (id: string) => {
+  const deleteProject = async (id: string): Promise<void> => {
     setProjects((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await deleteDoc(doc(db, 'projects', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
+    }
   };
 
   // Income actions
-  const addIncome = (data: Omit<IncomeTransaction, 'id'>) => {
+  const addIncome = async (data: Omit<IncomeTransaction, 'id'>): Promise<string> => {
     const newId = `inc-${Date.now().toString().slice(-4)}`;
     const newTx: IncomeTransaction = { ...data, id: newId };
     setIncomes((prev) => [newTx, ...prev]);
+    try {
+      await setDoc(doc(db, 'incomes', newId), newTx);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `incomes/${newId}`);
+    }
     return newId;
   };
 
-  const updateIncome = (id: string, updates: Partial<IncomeTransaction>) => {
+  const updateIncome = async (id: string, updates: Partial<IncomeTransaction>): Promise<void> => {
     setIncomes((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+    try {
+      await setDoc(doc(db, 'incomes', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `incomes/${id}`);
+    }
   };
 
-  const deleteIncome = (id: string) => {
+  const deleteIncome = async (id: string): Promise<void> => {
     setIncomes((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await deleteDoc(doc(db, 'incomes', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `incomes/${id}`);
+    }
   };
 
   // Expense actions
-  const addExpense = (data: Omit<ExpenseTransaction, 'id'>) => {
+  const addExpense = async (data: Omit<ExpenseTransaction, 'id'>): Promise<string> => {
     const newId = `exp-${Date.now().toString().slice(-4)}`;
     const newTx: ExpenseTransaction = { ...data, id: newId };
     setExpenses((prev) => [newTx, ...prev]);
+    try {
+      await setDoc(doc(db, 'expenses', newId), newTx);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `expenses/${newId}`);
+    }
     return newId;
   };
 
-  const updateExpense = (id: string, updates: Partial<ExpenseTransaction>) => {
+  const updateExpense = async (id: string, updates: Partial<ExpenseTransaction>): Promise<void> => {
     setExpenses((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+    try {
+      await setDoc(doc(db, 'expenses', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `expenses/${id}`);
+    }
   };
 
-  const deleteExpense = (id: string) => {
+  const deleteExpense = async (id: string): Promise<void> => {
     setExpenses((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await deleteDoc(doc(db, 'expenses', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `expenses/${id}`);
+    }
   };
 
   // Proposal actions
-  const addProposal = (data: Omit<Proposal, 'id' | 'proposalNumber' | 'shareToken' | 'createdAt'>) => {
+  const addProposal = async (
+    data: Omit<Proposal, 'id' | 'proposalNumber' | 'shareToken' | 'createdAt'>
+  ): Promise<Proposal> => {
     const year = new Date().getFullYear();
     const count = proposals.length + 1;
     const proposalNumber = `PRP-${year}-${count.toString().padStart(6, '0')}`;
     const shareToken = `prop-${Math.random().toString(36).substring(2, 10)}`;
     const newId = `prp-${Date.now().toString().slice(-4)}`;
-    
+
     const newProposal: Proposal = {
       ...data,
       id: newId,
@@ -533,38 +709,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProposals((prev) => [newProposal, ...prev]);
+    try {
+      await setDoc(doc(db, 'proposals', newId), newProposal);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `proposals/${newId}`);
+    }
     return newProposal;
   };
 
-  const updateProposal = (id: string, updates: Partial<Proposal>) => {
+  const updateProposal = async (id: string, updates: Partial<Proposal>): Promise<void> => {
     setProposals((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    try {
+      await setDoc(doc(db, 'proposals', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `proposals/${id}`);
+    }
   };
 
-  const deleteProposal = (id: string): boolean => {
+  const deleteProposal = async (id: string): Promise<boolean> => {
     if (!isAdminRole(currentUser?.role)) {
       console.warn('Izin ditolak: Hanya Admin/Owner yang dapat menghapus proposal.');
       return false;
     }
     setProposals((prev) => prev.filter((p) => p.id !== id));
-    return true;
+    try {
+      await deleteDoc(doc(db, 'proposals', id));
+      return true;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `proposals/${id}`);
+    }
   };
 
-  const markProposalViewed = (token: string) => {
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.shareToken === token && (p.status === 'Draft' || p.status === 'Terkirim')) {
-          return {
-            ...p,
-            status: 'Dilihat',
-            viewedAt: new Date().toLocaleString('id-ID'),
-          };
-        }
-        return p;
-      })
-    );
+  const markProposalViewed = async (token: string): Promise<void> => {
+    const target = proposals.find((p) => p.shareToken === token);
+    if (!target) return;
+    if (target.status === 'Draft' || target.status === 'Terkirim') {
+      const updates = {
+        status: 'Dilihat' as const,
+        viewedAt: new Date().toLocaleString('id-ID'),
+      };
+      setProposals((prev) => prev.map((p) => (p.id === target.id ? { ...p, ...updates } : p)));
+      try {
+        await setDoc(doc(db, 'proposals', target.id), updates, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `proposals/${target.id}`);
+      }
+    }
   };
 
-  const acceptProposal = (token: string) => {
+  const recordProposalView = async (token: string): Promise<void> => {
+    await markProposalViewed(token);
+  };
+
+  const acceptProposal = async (token: string) => {
     const proposal = proposals.find((p) => p.shareToken === token);
     if (!proposal) return null;
 
@@ -574,7 +771,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const invToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
     const newInvId = `inv-${Date.now().toString().slice(-4)}`;
 
-    // Due date = 7 days from now
     const due = new Date();
     due.setDate(due.getDate() + 7);
     const dueDate = due.toISOString().split('T')[0];
@@ -608,7 +804,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProposals((prev) => prev.map((p) => (p.id === proposal.id ? updatedProposal : p)));
     setInvoices((prev) => [newInvoice, ...prev]);
 
-    // Also auto-create a project if not exists
+    try {
+      await setDoc(doc(db, 'proposals', proposal.id), updatedProposal, { merge: true });
+      await setDoc(doc(db, 'invoices', newInvId), newInvoice);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `proposals/${proposal.id}`);
+    }
+
     addProject({
       clientId: proposal.clientId,
       clientName: proposal.clientName,
@@ -624,12 +826,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: `Proyek hasil deal proposal online ${proposal.proposalNumber}`,
     });
 
-    // Format WhatsApp invoice message & deep link
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const invoiceUrl = `${origin}/share/invoice/${invToken}`;
     const primaryBank = settings.bankAccounts?.[0] || {
       bankName: settings.bankName || 'BCA',
-      accountNumber: settings.bankAccount || '8830-1928-11',
+      accountNumber: settings.bankAccount || '829-019-8273',
       accountHolder: settings.bankHolder || settings.agencyName,
     };
 
@@ -648,7 +849,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const waUrl = createWhatsAppUrl(proposal.clientContact, waText);
 
-    // Add alert notification for admin with direct WhatsApp trigger
     setNotifications((prev) => [
       {
         id: `notif-${Date.now()}`,
@@ -673,7 +873,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const rejectProposal = (token: string, reason: string = 'Klien menolak proposal') => {
+  const rejectProposal = async (token: string, reason: string = 'Klien menolak proposal') => {
     const proposal = proposals.find((p) => p.shareToken === token);
     if (!proposal) return null;
 
@@ -685,6 +885,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProposals((prev) => prev.map((p) => (p.id === proposal.id ? updated : p)));
+    try {
+      await setDoc(doc(db, 'proposals', proposal.id), updated, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `proposals/${proposal.id}`);
+    }
 
     setNotifications((prev) => [
       {
@@ -701,7 +906,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Invoice actions
-  const addInvoice = (data: Omit<Invoice, 'id' | 'invoiceNumber' | 'shareToken' | 'createdAt'>) => {
+  const addInvoice = async (
+    data: Omit<Invoice, 'id' | 'invoiceNumber' | 'shareToken' | 'createdAt'>
+  ): Promise<Invoice> => {
     const year = new Date().getFullYear();
     const count = invoices.length + 1;
     const invoiceNumber = `INV-${year}-${count.toString().padStart(6, '0')}`;
@@ -718,29 +925,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setInvoices((prev) => [newInvoice, ...prev]);
+    try {
+      await setDoc(doc(db, 'invoices', newId), newInvoice);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `invoices/${newId}`);
+    }
     return newInvoice;
   };
 
-  const updateInvoice = (id: string, updates: Partial<Invoice>) => {
+  const updateInvoice = async (id: string, updates: Partial<Invoice>): Promise<void> => {
     setInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, ...updates } : inv)));
+    try {
+      await setDoc(doc(db, 'invoices', id), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `invoices/${id}`);
+    }
   };
 
-  const deleteInvoice = (id: string): boolean => {
+  const deleteInvoice = async (id: string): Promise<boolean> => {
     if (!isAdminRole(currentUser?.role)) {
       console.warn('Izin ditolak: Hanya Admin/Owner yang dapat menghapus invoice.');
       return false;
     }
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
-    return true;
+    try {
+      await deleteDoc(doc(db, 'invoices', id));
+      return true;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `invoices/${id}`);
+    }
   };
 
-  // Record Invoice Payment -> Auto adds entry to Pemasukan (Keuangan) & updates invoice + linked project!
-  const recordInvoicePayment = (
+  const recordInvoicePayment = async (
     invoiceId: string,
     amount: number,
     method: IncomeTransaction['method'],
     notes?: string
-  ) => {
+  ): Promise<void> => {
     const invoice = invoices.find((i) => i.id === invoiceId);
     if (!invoice) return;
 
@@ -748,21 +969,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isFull = newAmountPaid >= invoice.totalAmount;
     const newStatus: Invoice['status'] = isFull ? 'Lunas' : 'DP Diterima';
 
+    const invUpdates: Partial<Invoice> = {
+      amountPaid: newAmountPaid,
+      status: newStatus,
+      paidAt: new Date().toISOString().split('T')[0],
+      paymentNotes: notes || `Pembayaran ${isFull ? 'Pelunasan' : 'DP'} via ${method}`,
+    };
+
     setInvoices((prev) =>
-      prev.map((inv) =>
-        inv.id === invoiceId
-          ? {
-              ...inv,
-              amountPaid: newAmountPaid,
-              status: newStatus,
-              paidAt: new Date().toISOString().split('T')[0],
-              paymentNotes: notes || `Pembayaran ${isFull ? 'Pelunasan' : 'DP'} via ${method}`,
-            }
-          : inv
-      )
+      prev.map((inv) => (inv.id === invoiceId ? { ...inv, ...invUpdates } : inv))
     );
 
-    // Auto-create Pemasukan record
+    try {
+      await setDoc(doc(db, 'invoices', invoiceId), invUpdates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `invoices/${invoiceId}`);
+    }
+
     addIncome({
       date: new Date().toISOString().split('T')[0],
       clientId: invoice.clientId,
@@ -776,7 +999,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: notes || `Pembayaran Invoice ${invoice.invoiceNumber} (${isFull ? 'Lunas' : 'DP'})`,
     });
 
-    // Update linked project if any
     if (invoice.projectId) {
       updateProject(invoice.projectId, {
         dpReceived: newAmountPaid,
@@ -796,33 +1018,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]);
   };
 
-  const markInvoiceAsPaid = (invoiceId: string, method: IncomeTransaction['method'] = 'Transfer Bank') => {
+  const markInvoiceAsPaid = async (
+    invoiceId: string,
+    method: IncomeTransaction['method'] = 'Transfer Bank'
+  ): Promise<void> => {
     const inv = invoices.find((i) => i.id === invoiceId);
     if (!inv) return;
     const remaining = Math.max(0, inv.totalAmount - (inv.amountPaid || 0));
-    recordInvoicePayment(invoiceId, remaining > 0 ? remaining : inv.totalAmount, method);
+    await recordInvoicePayment(invoiceId, remaining > 0 ? remaining : inv.totalAmount, method);
   };
 
-  const recordProposalView = (token: string) => {
-    markProposalViewed(token);
-  };
+  const updateSettings = async (updates: Partial<AppSettings>): Promise<void> => {
+    setSettings((prev) => {
+      const next = { ...prev, ...updates };
+      try {
+        localStorage.setItem('sugeng_settings', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
 
-  const updateSettings = (updates: Partial<AppSettings>) => {
-    setSettings((prev) => ({ ...prev, ...updates }));
+    try {
+      await setDoc(doc(db, 'settings', 'agency'), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'settings/agency');
+    }
   };
 
   const clearNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
+  // Login handler
+  const login = async (identifier: string, pass: string): Promise<{ success: boolean; message?: string }> => {
     const trimmedId = identifier.trim().toLowerCase();
     const trimmedPass = pass.trim();
 
-    const userList = settings.users || [];
+    let userList = settings.users || [];
+
+    // Query Firestore users collection as verification
+    try {
+      const userSnaps = await getDocs(collection(db, 'users'));
+      if (!userSnaps.empty) {
+        const firestoreUsers: UserAccount[] = [];
+        userSnaps.forEach((d) => firestoreUsers.push(d.data() as UserAccount));
+        userList = firestoreUsers;
+      }
+    } catch {
+      // fallback to in-memory list
+    }
+
     const matchedUser = userList.find((u) => {
-      const emailMatch = u.email && u.email.toLowerCase() === trimmedId;
-      const nameMatch = u.name && u.name.toLowerCase() === trimmedId;
+      const emailMatch = Boolean(u.email && u.email.trim().toLowerCase() === trimmedId);
+      const nameMatch = Boolean(u.name && u.name.trim().toLowerCase() === trimmedId);
       return emailMatch || nameMatch;
     });
 
@@ -830,7 +1079,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Email atau Nama Pengguna tidak ditemukan.' };
     }
 
-    if (matchedUser.password !== trimmedPass) {
+    const savedPass = (matchedUser.password || '').trim();
+    if (savedPass !== trimmedPass) {
       return { success: false, message: 'Password salah. Silakan periksa kembali.' };
     }
 
@@ -841,12 +1091,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  // Google Login with Firebase Auth
+  const loginWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const firebaseUser = result.user;
+      const email = firebaseUser.email?.toLowerCase() || '';
+
+      let userList = settings.users || [];
+      const matched = userList.find((u) => u.email.toLowerCase() === email);
+
+      if (matched) {
+        setCurrentUser(matched);
+      } else {
+        const isOwnerEmail = email === 'pray.sugeng17@gmail.com' || email.includes('sugeng');
+        const newUser: UserAccount = {
+          id: `usr-${Date.now()}`,
+          name: firebaseUser.displayName || 'Sugeng Prayitno',
+          email,
+          role: isOwnerEmail ? 'Owner/Admin' : 'Staff',
+          avatar: firebaseUser.photoURL || '',
+        };
+        await addUser(newUser);
+        setCurrentUser(newUser);
+      }
+
+      setIsAuthenticated(true);
+      localStorage.setItem('sugeng_auth', 'true');
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Login Google dibatalkan atau gagal.';
+      return { success: false, message: msg };
+    }
+  };
+
   const logout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem('sugeng_auth');
   };
 
-  const addUser = (user: Omit<UserAccount, 'id'>): UserAccount => {
+  // User management
+  const addUser = async (user: Omit<UserAccount, 'id'>): Promise<UserAccount> => {
     const newUser: UserAccount = {
       ...user,
       id: `usr-${Date.now()}`,
@@ -860,10 +1145,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setSettings(newSettings);
     localStorage.setItem('sugeng_settings', JSON.stringify(newSettings));
+
+    try {
+      await setDoc(doc(db, 'users', newUser.id), newUser);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `users/${newUser.id}`);
+    }
+
     return newUser;
   };
 
-  const updateUser = (userId: string, updates: Partial<UserAccount>) => {
+  const updateUser = async (userId: string, updates: Partial<UserAccount>): Promise<void> => {
     const updatedUsers = (settings.users || []).map((u) => {
       if (u.id === userId) {
         return { ...u, ...updates };
@@ -883,9 +1175,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(updatedCurrent);
       localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
     }
+
+    try {
+      await setDoc(doc(db, 'users', userId), updates, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
   };
 
-  const deleteUser = (userId: string): { success: boolean; message?: string } => {
+  const deleteUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
     const users = settings.users || [];
     if (users.length <= 1) {
       return { success: false, message: 'Tidak dapat menghapus satu-satunya akun pengguna yang ada.' };
@@ -908,6 +1206,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(updatedUsers[0]);
       localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUsers[0]));
     }
+
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
+    }
+
     return { success: true };
   };
 
@@ -922,7 +1227,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications([]);
     setCurrentUser(DEFAULT_SETTINGS.users[0]);
     localStorage.clear();
-    localStorage.setItem('spdigital_live_ready_v1', 'true');
     localStorage.setItem('sugeng_current_user', JSON.stringify(DEFAULT_SETTINGS.users[0]));
     localStorage.setItem('sugeng_settings', JSON.stringify(DEFAULT_SETTINGS));
   };
@@ -934,6 +1238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTab,
         selectedClientId,
         setSelectedClientId,
+        isCloudSynced,
         publicShare,
         setPublicShare,
         currentUser,
@@ -941,6 +1246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         setIsAuthenticated,
         login,
+        loginWithGoogle,
         logout,
         addUser,
         updateUser,
