@@ -17,6 +17,9 @@ import {
   Upload,
   Trash2,
   Loader2,
+  Smartphone,
+  Laptop,
+  PowerOff,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { compressImage } from '../utils/imageUtils';
@@ -27,7 +30,7 @@ interface UserProfileModalProps {
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, updateUser, setActiveTab, logout } = useApp();
+  const { currentUser, updateUser, setActiveTab, logout, currentDeviceId, disconnectUserDevice } = useApp();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(currentUser.name || 'Sugeng Prayitno');
@@ -416,6 +419,99 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   placeholder="Ulangi password baru..."
                   className="w-full pl-10 pr-3.5 py-2 border border-slate-200 rounded-xl focus:border-cyan-500 outline-hidden font-mono text-slate-800"
                 />
+              </div>
+            </div>
+
+            {/* Active Devices Section (Max 2 devices) */}
+            <div className="pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                  <span className="font-bold text-xs text-slate-800">Perangkat Aktif Anda</span>
+                </div>
+                <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-100">
+                  {(currentUser.activeDevices || []).length}/2 Perangkat Terhubung
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-2.5">
+                Kebijakan akun membatasi maksimal 2 sesi perangkat aktif secara bersamaan.
+              </p>
+
+              <div className="space-y-2">
+                {(currentUser.activeDevices || []).map((device, idx) => {
+                  const isCurrent = device.deviceId === currentDeviceId;
+                  const isMobile =
+                    device.os?.toLowerCase().includes('android') ||
+                    device.os?.toLowerCase().includes('ios');
+
+                  return (
+                    <div
+                      key={device.deviceId || idx}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                        isCurrent
+                          ? 'bg-cyan-50/50 border-cyan-200'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            isCurrent
+                              ? 'bg-cyan-100 text-cyan-700'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {isMobile ? (
+                            <Smartphone className="w-4 h-4" />
+                          ) : (
+                            <Laptop className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-800 truncate">
+                              {device.deviceName}
+                            </span>
+                            {isCurrent && (
+                              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-cyan-600 text-white uppercase tracking-wider">
+                                Perangkat Ini
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Aktif:{' '}
+                            {device.lastActive
+                              ? new Date(device.lastActive).toLocaleDateString('id-ID', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  day: 'numeric',
+                                  month: 'short',
+                                })
+                              : 'Sekarang'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {!isCurrent && (
+                        <button
+                          type="button"
+                          onClick={() => disconnectUserDevice(currentUser.id, device.deviceId)}
+                          className="px-2.5 py-1 text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <PowerOff className="w-3 h-3" />
+                          <span>Putuskan</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Slot info if only 1 device is connected */}
+                {(currentUser.activeDevices || []).length < 2 && (
+                  <div className="p-2 border border-dashed border-slate-200 rounded-xl text-center text-[11px] text-slate-400 bg-white">
+                    + 1 slot perangkat cadangan tersedia
+                  </div>
+                )}
               </div>
             </div>
           </div>

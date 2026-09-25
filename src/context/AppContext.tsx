@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   setDoc,
+  getDoc,
   deleteDoc,
   onSnapshot,
   getDocs,
@@ -28,6 +29,7 @@ import {
   ActiveTab,
   AppSettings,
   Client,
+  DeviceSession,
   ExpenseTransaction,
   IncomeTransaction,
   Invoice,
@@ -40,6 +42,11 @@ import {
   createWhatsAppUrl,
   isAdminRole,
 } from '../utils/formatters';
+import {
+  getDeviceId,
+  getCurrentDeviceSession,
+  cleanActiveDevices,
+} from '../utils/deviceHelper';
 
 interface AppContextType {
   // Navigation & View
@@ -58,13 +65,39 @@ interface AppContextType {
   } | null;
   setPublicShare: (share: { type: 'proposal' | 'invoice'; token: string } | null) => void;
 
-  // Auth
+  // Auth & Multi-Device Control (Max 2 devices)
   currentUser: UserAccount;
   setCurrentUser: (user: UserAccount) => void;
   isAuthenticated: boolean;
   setIsAuthenticated: (auth: boolean) => void;
-  login: (identifier: string, pass: string) => Promise<{ success: boolean; message?: string }>;
-  loginWithGoogle: () => Promise<{ success: boolean; message?: string }>;
+  currentDeviceId: string;
+  deviceNotice: string | null;
+  clearDeviceNotice: () => void;
+  login: (
+    identifier: string,
+    pass: string
+  ) => Promise<{
+    success: boolean;
+    message?: string;
+    deviceLimitReached?: boolean;
+    activeDevices?: DeviceSession[];
+    targetUserId?: string;
+    targetUserName?: string;
+  }>;
+  loginWithGoogle: () => Promise<{
+    success: boolean;
+    message?: string;
+    deviceLimitReached?: boolean;
+    activeDevices?: DeviceSession[];
+    targetUserId?: string;
+    targetUserName?: string;
+  }>;
+  disconnectDeviceAndLogin: (
+    userId: string,
+    kickDeviceId: string
+  ) => Promise<{ success: boolean; message?: string }>;
+  disconnectUserDevice: (userId: string, targetDeviceId: string) => Promise<void>;
+  resetUserDevices: (userId: string) => Promise<void>;
   logout: () => void;
   addUser: (user: Omit<UserAccount, 'id'>) => Promise<UserAccount>;
   updateUser: (userId: string, updates: Partial<UserAccount>) => Promise<void>;
@@ -249,6 +282,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
+  // Multi-Device Limit State (Max 2 devices)
+  const [currentDeviceId] = useState<string>(() => getDeviceId());
+  const [deviceNotice, setDeviceNotice] = useState<string | null>(null);
+  const clearDeviceNotice = () => setDeviceNotice(null);
+
+  // Periodic heartbeat to refresh device activity
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.id) return;
+    const myDevId = getDeviceId();
+
+    const updateHeartbeat = async () => {
+      try {
+        const userRef = doc(db, 'users', currentUser.id);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data() as UserAccount;
+          let devices = cleanActiveDevices(uData.activeDevices);
+          let found = false;
+          devices = devices.map((d) => {
+            if (d.deviceId === myDevId) {
+              found = true;
+              return { ...d, lastActive: new Date().toISOString() };
+            }
+            return d;
+          });
+          if (found) {
+            await setDoc(userRef, { activeDevices: devices }, { merge: true });
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+
+    const timer = setInterval(updateHeartbeat, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [isAuthenticated, currentUser?.id]);
+
   // LocalStorage backups
   useEffect(() => {
     localStorage.setItem('sugeng_clients', JSON.stringify(clients));
@@ -402,6 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             role: data.role || 'Staff',
             password: data.password || 'Password01',
             avatar: data.avatar || '',
+            activeDevices: cleanActiveDevices(data.activeDevices),
           });
         });
 
@@ -434,6 +506,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
               localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
             } catch {}
+
+            // Real-time check: If current device was kicked out or disconnected
+            const myDevId = getDeviceId();
+            const activeDevs = cleanActiveDevices(updatedCurrent.activeDevices);
+            const isSavedAuth = typeof window !== 'undefined' && localStorage.getItem('sugeng_auth') === 'true';
+
+            if (
+              isSavedAuth &&
+              activeDevs.length > 0 &&
+              !activeDevs.some((d) => d.deviceId === myDevId)
+            ) {
+              console.warn('Sesi perangkat diputus karena login di perangkat lain.');
+              setIsAuthenticated(false);
+              setActiveTab('dashboard');
+              try {
+                localStorage.removeItem('sugeng_auth');
+              } catch {}
+              setDeviceNotice(
+                'Sesi akun Anda telah diputus karena akun ini telah login di perangkat lain (batas maksimal 2 perangkat).'
+              );
+            }
+
             return updatedCurrent;
           }
           return prev;
@@ -1100,8 +1194,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  // Login handler
-  const login = async (identifier: string, pass: string): Promise<{ success: boolean; message?: string }> => {
+  // Login handler with 2-device limit enforcement
+  const login = async (
+    identifier: string,
+    pass: string
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    deviceLimitReached?: boolean;
+    activeDevices?: DeviceSession[];
+    targetUserId?: string;
+    targetUserName?: string;
+  }> => {
     const trimmedId = identifier.trim().toLowerCase();
     const trimmedPass = pass.trim();
 
@@ -1140,33 +1244,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Password salah. Silakan periksa kembali.' };
     }
 
-    setCurrentUser(matchedUser);
+    // MULTI-DEVICE LIMIT ENFORCEMENT (Maksimal 2 device aktif)
+    const myDevId = getDeviceId();
+    const mySession = getCurrentDeviceSession();
+    const existingDevices = cleanActiveDevices(matchedUser.activeDevices);
+    const isCurrentAlreadyRegistered = existingDevices.some((d) => d.deviceId === myDevId);
+
+    let updatedDevices: DeviceSession[];
+
+    if (isCurrentAlreadyRegistered) {
+      // Re-login from same device: update last active timestamp
+      updatedDevices = existingDevices.map((d) =>
+        d.deviceId === myDevId ? { ...d, lastActive: new Date().toISOString() } : d
+      );
+    } else if (existingDevices.length < 2) {
+      // Slot available: 1st or 2nd active device
+      updatedDevices = [...existingDevices, mySession];
+    } else {
+      // Already 2 active devices!
+      return {
+        success: false,
+        deviceLimitReached: true,
+        activeDevices: existingDevices,
+        targetUserId: matchedUser.id,
+        targetUserName: matchedUser.name,
+        message: `Batas maksimal 2 perangkat tercapai. Akun "${matchedUser.name}" sedang aktif di 2 perangkat lain.`,
+      };
+    }
+
+    // Persist updated devices list in Firestore
+    try {
+      await setDoc(doc(db, 'users', matchedUser.id), { activeDevices: updatedDevices }, { merge: true });
+    } catch (e) {
+      console.warn('Gagal menyimpan sesi perangkat di Firestore:', e);
+    }
+
+    const updatedUserWithDevices: UserAccount = {
+      ...matchedUser,
+      activeDevices: updatedDevices,
+    };
+
+    setCurrentUser(updatedUserWithDevices);
     setIsAuthenticated(true);
     // CRITICAL: Always reset activeTab to 'dashboard' on login so a user isn't stuck on restricted views!
     setActiveTab('dashboard');
 
     try {
       localStorage.setItem('sugeng_auth', 'true');
-      localStorage.setItem('sugeng_current_user', JSON.stringify(matchedUser));
+      localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUserWithDevices));
     } catch {
       // ignore
     }
     return { success: true };
   };
 
-  // Google Login with Firebase Auth
-  const loginWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+  // Google Login with Firebase Auth and 2-device limit
+  const loginWithGoogle = async (): Promise<{
+    success: boolean;
+    message?: string;
+    deviceLimitReached?: boolean;
+    activeDevices?: DeviceSession[];
+    targetUserId?: string;
+    targetUserName?: string;
+  }> => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
       const email = firebaseUser.email?.toLowerCase() || '';
 
       let userList = settings.users || [];
-      const matched = userList.find((u) => u.email.toLowerCase() === email);
+      let matched = userList.find((u) => u.email.toLowerCase() === email);
 
-      if (matched) {
-        setCurrentUser(matched);
-      } else {
+      if (!matched) {
         const isOwnerEmail = email === 'pray.sugeng17@gmail.com' || email.includes('sugeng');
         const newUser: UserAccount = {
           id: `usr-${Date.now()}`,
@@ -1174,15 +1323,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email,
           role: isOwnerEmail ? 'Owner/Admin' : 'Staff',
           avatar: firebaseUser.photoURL || '',
+          activeDevices: [],
         };
-        await addUser(newUser);
-        setCurrentUser(newUser);
+        matched = await addUser(newUser);
       }
 
+      // Check device limit (Max 2 devices)
+      const myDevId = getDeviceId();
+      const mySession = getCurrentDeviceSession();
+      const existingDevices = cleanActiveDevices(matched.activeDevices);
+      const isCurrentAlreadyRegistered = existingDevices.some((d) => d.deviceId === myDevId);
+
+      let updatedDevices: DeviceSession[];
+      if (isCurrentAlreadyRegistered) {
+        updatedDevices = existingDevices.map((d) =>
+          d.deviceId === myDevId ? { ...d, lastActive: new Date().toISOString() } : d
+        );
+      } else if (existingDevices.length < 2) {
+        updatedDevices = [...existingDevices, mySession];
+      } else {
+        return {
+          success: false,
+          deviceLimitReached: true,
+          activeDevices: existingDevices,
+          targetUserId: matched.id,
+          targetUserName: matched.name,
+          message: `Batas maksimal 2 perangkat tercapai. Akun Google ini sedang aktif di 2 perangkat lain.`,
+        };
+      }
+
+      try {
+        await setDoc(doc(db, 'users', matched.id), { activeDevices: updatedDevices }, { merge: true });
+      } catch {}
+
+      const updatedUser: UserAccount = { ...matched, activeDevices: updatedDevices };
+      setCurrentUser(updatedUser);
       setIsAuthenticated(true);
       setActiveTab('dashboard');
       try {
         localStorage.setItem('sugeng_auth', 'true');
+        localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUser));
       } catch {}
       return { success: true };
     } catch (err: unknown) {
@@ -1202,7 +1382,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Disconnect a specific or oldest device and complete login on this device
+  const disconnectDeviceAndLogin = async (
+    userId: string,
+    kickDeviceId: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      let targetUser = settings.users?.find((u) => u.id === userId);
+      if (!targetUser) {
+        const snap = await getDoc(doc(db, 'users', userId));
+        if (snap.exists()) {
+          targetUser = { ...snap.data(), id: snap.id } as UserAccount;
+        }
+      }
+      if (!targetUser) {
+        return { success: false, message: 'Data pengguna tidak ditemukan.' };
+      }
+
+      const currentSession = getCurrentDeviceSession();
+      const existingDevices = cleanActiveDevices(targetUser.activeDevices);
+
+      let remainingDevices: DeviceSession[];
+      if (kickDeviceId === 'oldest') {
+        const sorted = [...existingDevices].sort(
+          (a, b) =>
+            new Date(a.lastActive || a.createdAt || 0).getTime() -
+            new Date(b.lastActive || b.createdAt || 0).getTime()
+        );
+        const oldestId = sorted[0]?.deviceId;
+        remainingDevices = existingDevices.filter((d) => d.deviceId !== oldestId);
+      } else {
+        remainingDevices = existingDevices.filter((d) => d.deviceId !== kickDeviceId);
+      }
+
+      // Ensure at most 1 remaining device, then append current device -> total 2 devices
+      const updatedDevices = [...remainingDevices.slice(0, 1), currentSession];
+      const fullUpdatedUser: UserAccount = {
+        ...targetUser,
+        activeDevices: updatedDevices,
+      };
+
+      await setDoc(doc(db, 'users', userId), { activeDevices: updatedDevices }, { merge: true });
+
+      setCurrentUser(fullUpdatedUser);
+      setIsAuthenticated(true);
+      setActiveTab('dashboard');
+      try {
+        localStorage.setItem('sugeng_auth', 'true');
+        localStorage.setItem('sugeng_current_user', JSON.stringify(fullUpdatedUser));
+      } catch {}
+
+      return { success: true };
+    } catch {
+      return { success: false, message: 'Gagal memutuskan perangkat dan masuk. Silakan coba lagi.' };
+    }
+  };
+
+  // Disconnect a specific device for a user (can be called by user or admin)
+  const disconnectUserDevice = async (userId: string, targetDeviceId: string): Promise<void> => {
+    const user =
+      settings.users?.find((u) => u.id === userId) ||
+      (currentUser.id === userId ? currentUser : undefined);
+    if (!user) return;
+    const remaining = cleanActiveDevices(user.activeDevices).filter((d) => d.deviceId !== targetDeviceId);
+    await updateUser(userId, { activeDevices: remaining });
+  };
+
+  // Reset all active devices for a user (admin emergency reset)
+  const resetUserDevices = async (userId: string): Promise<void> => {
+    await updateUser(userId, { activeDevices: [] });
+  };
+
   const logout = () => {
+    const myDevId = getDeviceId();
+    if (currentUser && currentUser.id) {
+      const remaining = cleanActiveDevices(currentUser.activeDevices).filter((d) => d.deviceId !== myDevId);
+      setDoc(doc(db, 'users', currentUser.id), { activeDevices: remaining }, { merge: true }).catch(() => {});
+    }
     setIsAuthenticated(false);
     setActiveTab('dashboard');
     try {
@@ -1256,6 +1512,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: updates.role !== undefined ? updates.role : (existing?.role ?? 'Staff'),
       password: updates.password !== undefined ? updates.password : (existing?.password ?? 'Password01'),
       avatar: updates.avatar !== undefined ? updates.avatar : (existing?.avatar ?? ''),
+      activeDevices:
+        updates.activeDevices !== undefined
+          ? updates.activeDevices
+          : (existing?.activeDevices ?? []),
     };
 
     const updatedUsers = (settings.users || []).map((u) => (u.id === userId ? fullUpdatedUser : u));
@@ -1384,8 +1644,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser,
         isAuthenticated,
         setIsAuthenticated,
+        currentDeviceId,
+        deviceNotice,
+        clearDeviceNotice,
         login,
         loginWithGoogle,
+        disconnectDeviceAndLogin,
+        disconnectUserDevice,
+        resetUserDevices,
         logout,
         addUser,
         updateUser,

@@ -23,6 +23,10 @@ import {
   CheckCircle2,
   X,
   KeyRound,
+  Smartphone,
+  Laptop,
+  PowerOff,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AgencySettings, PartnerSplit, TeamMember, UserAccount } from '../types';
@@ -35,6 +39,8 @@ export const SettingsView: React.FC = () => {
     addUser,
     updateUser,
     deleteUser,
+    disconnectUserDevice,
+    resetUserDevices,
     setActiveTab: setAppActiveTab,
   } = useApp();
 
@@ -122,6 +128,7 @@ export const SettingsView: React.FC = () => {
   const [deleteConfirmUser, setDeleteConfirmUser] = useState<UserAccount | null>(null);
   const [userNotice, setUserNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [deviceManageUser, setDeviceManageUser] = useState<UserAccount | null>(null);
 
   const toggleRevealPassword = (id: string) => {
     setRevealedPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -764,6 +771,7 @@ export const SettingsView: React.FC = () => {
                     <th className="py-3 px-4">Email</th>
                     <th className="py-3 px-4">Role Akses</th>
                     <th className="py-3 px-4">Kolom Password</th>
+                    <th className="py-3 px-4">Sesi Perangkat</th>
                     <th className="py-3 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
@@ -837,8 +845,40 @@ export const SettingsView: React.FC = () => {
                         </div>
                       </td>
 
+                      <td className="py-3 px-4">
+                        <button
+                          type="button"
+                          onClick={() => setDeviceManageUser(member)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer hover:shadow-xs bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
+                          title="Klik untuk melihat dan kelola sesi perangkat"
+                        >
+                          <Laptop className="w-3 h-3 text-cyan-600" />
+                          <span
+                            className={
+                              (member.activeDevices || []).length >= 2
+                                ? 'text-amber-700 font-bold'
+                                : (member.activeDevices || []).length === 1
+                                ? 'text-emerald-700 font-bold'
+                                : 'text-slate-500'
+                            }
+                          >
+                            {(member.activeDevices || []).length}/2 Perangkat
+                          </span>
+                        </button>
+                      </td>
+
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDeviceManageUser(member)}
+                            className="p-1.5 text-slate-600 hover:text-cyan-700 hover:bg-cyan-50 rounded-lg transition-colors flex items-center gap-1 font-semibold"
+                            title="Kelola Sesi Perangkat (Maks 2 Device)"
+                          >
+                            <Laptop className="w-3.5 h-3.5 text-cyan-600" />
+                            <span className="text-[11px] hidden sm:inline">Perangkat</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleStartEdit(member)}
@@ -866,7 +906,7 @@ export const SettingsView: React.FC = () => {
                   ))}
                   {(formData.teamMembers || formData.users || []).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-400 italic text-xs">
+                      <td colSpan={6} className="py-8 text-center text-slate-400 italic text-xs">
                         Belum ada pengguna terdaftar.
                       </td>
                     </tr>
@@ -1013,6 +1053,130 @@ export const SettingsView: React.FC = () => {
                     className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer"
                   >
                     Ya, Hapus Pengguna
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Admin Device Management Modal (Max 2 Devices Policy) */}
+          {deviceManageUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+              <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center">
+                      <Laptop className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">
+                        Kelola Sesi Perangkat Pengguna
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {deviceManageUser.name} ({deviceManageUser.email || 'Tanpa Email'})
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDeviceManageUser(null)}
+                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="my-4">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs mb-4">
+                    <span className="text-slate-600 font-medium">Batas Kebijakan Keamanan:</span>
+                    <span className="font-bold text-cyan-700 bg-cyan-100/60 px-2.5 py-0.5 rounded-md">
+                      Maksimal 2 Perangkat Aktif
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {(deviceManageUser.activeDevices || []).length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-2xl">
+                        Pengguna ini belum memiliki sesi perangkat yang aktif.
+                      </div>
+                    ) : (
+                      (deviceManageUser.activeDevices || []).map((dev, idx) => (
+                        <div
+                          key={dev.deviceId || idx}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                              <Laptop className="w-4 h-4 text-cyan-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 truncate">
+                                  {dev.deviceName}
+                                </span>
+                                <span className="px-1.5 py-0.2 bg-slate-200 text-slate-600 text-[10px] rounded font-mono">
+                                  Slot {idx + 1}/2
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Aktif: {dev.lastActive ? new Date(dev.lastActive).toLocaleString('id-ID') : 'Baru saja'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await disconnectUserDevice(deviceManageUser.id, dev.deviceId);
+                              const updated = (deviceManageUser.activeDevices || []).filter(
+                                (d) => d.deviceId !== dev.deviceId
+                              );
+                              setDeviceManageUser({ ...deviceManageUser, activeDevices: updated });
+                              setUserNotice({
+                                type: 'success',
+                                message: `Sesi perangkat "${dev.deviceName}" berhasil diputus!`,
+                              });
+                              setTimeout(() => setUserNotice(null), 3000);
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Putuskan sesi perangkat ini secara paksa"
+                          >
+                            <PowerOff className="w-3 h-3" />
+                            <span>Putuskan Sesi</span>
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  {(deviceManageUser.activeDevices || []).length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await resetUserDevices(deviceManageUser.id);
+                        setDeviceManageUser({ ...deviceManageUser, activeDevices: [] });
+                        setUserNotice({
+                          type: 'success',
+                          message: `Semua sesi perangkat ${deviceManageUser.name} berhasil di-reset!`,
+                        });
+                        setTimeout(() => setUserNotice(null), 3000);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reset Semua Sesi ({deviceManageUser.name})</span>
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setDeviceManageUser(null)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl cursor-pointer"
+                  >
+                    Tutup
                   </button>
                 </div>
               </div>

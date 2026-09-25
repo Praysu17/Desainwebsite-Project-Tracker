@@ -125,6 +125,15 @@ export interface PartnerSplit {
   percentage: number; // e.g. 50, 50
 }
 
+export interface DeviceSession {
+  deviceId: string;
+  deviceName: string;
+  browser?: string;
+  os?: string;
+  lastActive: string;
+  createdAt: string;
+}
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -132,6 +141,7 @@ export interface UserAccount {
   role: 'Owner/Admin' | 'Staff' | 'Admin' | 'Project Manager' | 'Freelancer';
   avatar?: string;
   password?: string;
+  activeDevices?: DeviceSession[];
 }
 
 export type TeamMember = UserAccount;

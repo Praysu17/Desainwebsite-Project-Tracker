@@ -133,7 +133,11 @@
         "email": { "type": "string", "maxLength": 150 },
         "role": { "type": "string", "enum": ["Owner/Admin", "Staff", "Admin", "Project Manager", "Freelancer"] },
         "avatar": { "type": "string", "maxLength": 500 },
-        "password": { "type": "string", "maxLength": 200 }
+        "password": { "type": "string", "maxLength": 200 },
+        "activeDevices": {
+          "type": "array",
+          "description": "List of active device sessions (max 2 per user)"
+        }
       },
       "required": ["id", "name", "email", "role"]
     },
