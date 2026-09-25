@@ -27,10 +27,12 @@ import {
   Laptop,
   PowerOff,
   RefreshCw,
+  BookOpen,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AgencySettings, PartnerSplit, TeamMember, UserAccount } from '../types';
 import { cleanActiveDevices, getCurrentDeviceSession } from '../utils/deviceHelper';
+import { TechnicalDocsView } from './TechnicalDocsView';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -65,7 +67,7 @@ export const SettingsView: React.FC = () => {
   }
 
   const [activeTab, setActiveTab] = useState<
-    'agency' | 'templates' | 'categories' | 'team' | 'split'
+    'agency' | 'templates' | 'categories' | 'team' | 'split' | 'docs'
   >('agency');
 
   // Local copy of settings for easy editing with safe fallbacks
@@ -412,6 +414,18 @@ export const SettingsView: React.FC = () => {
         >
           <Percent className="w-4 h-4" />
           <span>Pengaturan Split Profit</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('docs')}
+          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition-colors whitespace-nowrap ${
+            activeTab === 'docs'
+              ? 'bg-cyan-600 text-white shadow-xs'
+              : 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100/80 border border-cyan-200/60'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Dokumentasi Teknis (Download)</span>
         </button>
       </div>
 
@@ -1307,6 +1321,9 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Tab Content: 6. Dokumentasi Teknis & Panduan Handover */}
+      {activeTab === 'docs' && <TechnicalDocsView />}
     </div>
   );
 };
