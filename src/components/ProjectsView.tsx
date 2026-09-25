@@ -779,14 +779,20 @@ export const ProjectsView: React.FC = () => {
                     <input
                       type="number"
                       min="0"
-                      step="50000"
+                      step="any"
+                      onKeyDown={(e) => {
+                        if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                          e.preventDefault();
+                        }
+                      }}
                       value={editingProject.projectValue || 0}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const raw = e.target.value;
                         setEditingProject({
                           ...editingProject,
-                          projectValue: parseFloat(e.target.value) || 0,
-                        })
-                      }
+                          projectValue: raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0),
+                        });
+                      }}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-xl bg-white font-bold"
                     />
                   </div>
@@ -798,14 +804,20 @@ export const ProjectsView: React.FC = () => {
                     <input
                       type="number"
                       min="0"
-                      step="50000"
+                      step="any"
+                      onKeyDown={(e) => {
+                        if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                          e.preventDefault();
+                        }
+                      }}
                       value={editingProject.dpReceived || 0}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const raw = e.target.value;
                         setEditingProject({
                           ...editingProject,
-                          dpReceived: parseFloat(e.target.value) || 0,
-                        })
-                      }
+                          dpReceived: raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0),
+                        });
+                      }}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-xl bg-white font-bold text-emerald-700"
                     />
                   </div>

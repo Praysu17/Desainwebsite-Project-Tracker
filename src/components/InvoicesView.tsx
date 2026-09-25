@@ -103,7 +103,7 @@ export const InvoicesView: React.FC = () => {
     const client = clients.find((c) => c.id === formClientId) || clients[0];
     if (!client || !formProjectTitle.trim()) return;
 
-    const totalAmount = formItems.reduce((s, i) => s + i.total, 0);
+    const totalAmount = Math.max(0, formItems.reduce((s, i) => s + Math.max(0, i.total || 0), 0));
 
     addInvoice({
       clientId: client.id,
@@ -538,11 +538,27 @@ export const InvoicesView: React.FC = () => {
                   <input
                     type="number"
                     required
-                    min="10000"
-                    step="50000"
+                    min="0"
+                    step="any"
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
                     value={formItems[0].unitPrice || ''}
                     onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setFormItems([
+                          {
+                            ...formItems[0],
+                            unitPrice: 0,
+                            total: 0,
+                          },
+                        ]);
+                        return;
+                      }
+                      const val = Math.max(0, parseFloat(raw) || 0);
                       setFormItems([
                         {
                           ...formItems[0],

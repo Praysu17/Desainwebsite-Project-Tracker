@@ -422,19 +422,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               </div>
             </div>
 
-            {/* Active Devices Section (Max 2 devices) */}
+            {/* Active Devices Section (1 User Maksimal 2 Perangkat) */}
             <div className="pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1.5 select-none cursor-default">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-cyan-600" />
                   <span className="font-bold text-xs text-slate-800">Perangkat Aktif Anda</span>
                 </div>
                 <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-100">
-                  {(currentUser.activeDevices || []).length}/2 Perangkat Terhubung
+                  {(currentUser.activeDevices || []).length}/2 Terhubung
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 mb-2.5">
-                Kebijakan akun membatasi maksimal 2 sesi perangkat aktif secara bersamaan.
+              <p className="text-[11px] text-slate-500 mb-2.5 select-none cursor-default">
+                Kebijakan keamanan akun: <strong className="text-slate-700 font-semibold">1 User Maksimal 2 Perangkat</strong> aktif secara bersamaan.
               </p>
 
               <div className="space-y-2">

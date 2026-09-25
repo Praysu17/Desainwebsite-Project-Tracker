@@ -143,14 +143,19 @@ export const ProposalsView: React.FC = () => {
     const client = clients.find((c) => c.id === formClientId) || clients[0];
     if (!client || !formProjectTitle.trim()) return;
 
-    const totalValue = calculateTotal(lineItems);
+    const sanitizedItems = lineItems.map((item) => ({
+      ...item,
+      price: Math.max(0, Number(item.price) || 0),
+    }));
+
+    const totalValue = calculateTotal(sanitizedItems);
 
     addProposal({
       clientId: client.id,
       clientName: client.name,
       clientContact: client.contact,
       projectTitle: formProjectTitle,
-      items: lineItems,
+      items: sanitizedItems,
       totalValue,
       terms: formTerms,
       expiryDate: formExpiryDate,
@@ -634,16 +639,22 @@ export const ProposalsView: React.FC = () => {
                             type="number"
                             required
                             min="0"
-                            step="50000"
+                            step="any"
+                            onKeyDown={(e) => {
+                              if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                e.preventDefault();
+                              }
+                            }}
                             placeholder="Harga (Rp)"
                             value={item.price || ''}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const raw = e.target.value;
                               handleLineItemChange(
                                 item.id,
                                 'price',
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
+                                raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0)
+                              );
+                            }}
                             className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-right"
                           />
                         </div>

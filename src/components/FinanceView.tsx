@@ -104,8 +104,13 @@ export const FinanceView: React.FC = () => {
     e.preventDefault();
     if (!editingIncome || !editingIncome.clientName) return;
 
+    const safeAmount = Math.max(0, Number(editingIncome.amount) || 0);
+
     if (editingIncome.id) {
-      updateIncome(editingIncome.id, editingIncome);
+      updateIncome(editingIncome.id, {
+        ...editingIncome,
+        amount: safeAmount,
+      });
     } else {
       addIncome({
         date: editingIncome.date || new Date().toISOString().split('T')[0],
@@ -114,7 +119,7 @@ export const FinanceView: React.FC = () => {
         projectId: editingIncome.projectId,
         projectTitle: editingIncome.projectTitle,
         incomeType: (editingIncome.incomeType as IncomeType) || 'DP',
-        amount: editingIncome.amount || 0,
+        amount: safeAmount,
         method: (editingIncome.method as PaymentMethod) || 'Transfer Bank',
         notes: editingIncome.notes || '',
       });
@@ -129,14 +134,19 @@ export const FinanceView: React.FC = () => {
     e.preventDefault();
     if (!editingExpense || !editingExpense.category) return;
 
+    const safeAmount = Math.max(0, Number(editingExpense.amount) || 0);
+
     if (editingExpense.id) {
-      updateExpense(editingExpense.id, editingExpense);
+      updateExpense(editingExpense.id, {
+        ...editingExpense,
+        amount: safeAmount,
+      });
     } else {
       addExpense({
         date: editingExpense.date || new Date().toISOString().split('T')[0],
         category: editingExpense.category || 'Operasional',
         description: editingExpense.description || '',
-        amount: editingExpense.amount || 0,
+        amount: safeAmount,
         method: (editingExpense.method as PaymentMethod) || 'Transfer Bank',
         notes: editingExpense.notes || '',
       });
@@ -569,15 +579,21 @@ export const FinanceView: React.FC = () => {
                   <input
                     type="number"
                     required
-                    min="1000"
-                    step="50000"
+                    min="0"
+                    step="any"
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
                     value={editingIncome.amount || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const raw = e.target.value;
                       setEditingIncome({
                         ...editingIncome,
-                        amount: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                        amount: raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0),
+                      });
+                    }}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:border-cyan-500 outline-hidden font-bold"
                   />
                 </div>
@@ -711,15 +727,21 @@ export const FinanceView: React.FC = () => {
                   <input
                     type="number"
                     required
-                    min="1000"
-                    step="10000"
+                    min="0"
+                    step="any"
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
                     value={editingExpense.amount || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const raw = e.target.value;
                       setEditingExpense({
                         ...editingExpense,
-                        amount: parseFloat(e.target.value) || 0,
-                      })
-                    }
+                        amount: raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0),
+                      });
+                    }}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:border-cyan-500 outline-hidden font-bold text-rose-700"
                   />
                 </div>

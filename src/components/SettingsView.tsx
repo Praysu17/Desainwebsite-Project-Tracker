@@ -1086,10 +1086,10 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 <div className="my-4">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs mb-4">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs mb-4 select-none cursor-default">
                     <span className="text-slate-600 font-medium">Batas Kebijakan Keamanan:</span>
                     <span className="font-bold text-cyan-700 bg-cyan-100/60 px-2.5 py-0.5 rounded-md">
-                      Maksimal 2 Perangkat Aktif
+                      1 User Maksimal 2 Perangkat
                     </span>
                   </div>
 
@@ -1214,10 +1214,21 @@ export const SettingsView: React.FC = () => {
               <label className="block font-semibold text-slate-700 mb-1">Porsi Bagi Hasil (%)</label>
               <input
                 type="number"
-                min="1"
+                min="0"
                 max="100"
+                step="any"
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                    e.preventDefault();
+                  }
+                }}
                 value={newPartnerPercent}
-                onChange={(e) => setNewPartnerPercent(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setNewPartnerPercent(
+                    raw === '' ? 0 : Math.max(0, Math.min(100, parseFloat(raw) || 0))
+                  );
+                }}
                 className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold"
               />
             </div>

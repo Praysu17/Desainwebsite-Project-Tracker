@@ -220,14 +220,14 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Device Limit Notification Badge */}
-            <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <ShieldAlert className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Limitasi Login Keamanan:</span>
+            {/* 1 User Maksimal 2 Perangkat Info Badge */}
+            <div className="p-2.5 bg-cyan-950/30 border border-cyan-500/20 rounded-xl flex items-center justify-between text-[11px] text-cyan-300 select-none cursor-default pointer-events-none">
+              <span className="flex items-center gap-2 font-medium">
+                <ShieldAlert className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>1 User Maksimal 2 Perangkat</span>
               </span>
-              <span className="font-semibold text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded-md border border-cyan-800/40">
-                Maksimal 2 Perangkat
+              <span className="font-semibold text-cyan-400 bg-cyan-900/40 px-2 py-0.5 rounded-md border border-cyan-700/40 text-[10px]">
+                Kebijakan Sesi
               </span>
             </div>
 
@@ -274,11 +274,11 @@ export const LoginPage: React.FC = () => {
               </div>
               <div className="flex-1">
                 <h3 className="text-base sm:text-lg font-bold text-white">
-                  Batas Maksimal 2 Perangkat Tercapai
+                  1 User Maksimal 2 Perangkat Tercapai
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   Akun <strong className="text-cyan-300 font-semibold">{deviceLimitData.userName}</strong> saat
-                  ini sudah login di <strong className="text-amber-400">2 perangkat aktif</strong>.
+                  ini sudah login di <strong className="text-amber-400">2 perangkat aktif</strong> (1 User Maksimal 2 Perangkat).
                   Pilih salah satu sesi di bawah untuk diputus agar Anda dapat masuk di perangkat ini:
                 </p>
               </div>
