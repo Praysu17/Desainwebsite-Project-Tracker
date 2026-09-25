@@ -1,1 +1,57 @@
 @import "tailwindcss";
+
+/* Prevent non-input elements from showing text I-beam cursor / caret */
+html,
+body {
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Headings, paragraphs, spans, labels, and layout elements use default arrow cursor */
+h1, h2, h3, h4, h5, h6,
+p, span, div, label, table, tr, th, td,
+aside, header, nav, footer, section, article {
+  cursor: default;
+}
+
+/* Interactive elements retain pointer cursor */
+a,
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
+select {
+  cursor: pointer;
+}
+
+/* Only text inputs and textareas display text I-beam cursor */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input:not([type]),
+textarea,
+[contenteditable="true"] {
+  cursor: text !important;
+}
+
+/* Disabled controls */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed !important;
+}
+
+/* Prevent accidental text highlight on labels and button controls */
+label,
+button,
+[role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}

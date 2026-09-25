@@ -437,7 +437,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 Kebijakan keamanan akun: <strong className="text-slate-700 font-semibold">1 User Maksimal 2 Perangkat</strong> aktif secara bersamaan.
               </p>
 
-              <div className="space-y-2">
+              <div className="space-y-2 select-none cursor-default">
                 {(currentUser.activeDevices || []).map((device, idx) => {
                   const isCurrent = device.deviceId === currentDeviceId;
                   const isMobile =
@@ -447,13 +447,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   return (
                     <div
                       key={device.deviceId || idx}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors select-none cursor-default ${
                         isCurrent
                           ? 'bg-cyan-50/50 border-cyan-200'
                           : 'bg-slate-50 border-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0 select-none cursor-default">
                         <div
                           className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                             isCurrent
@@ -467,18 +467,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                             <Laptop className="w-4 h-4" />
                           )}
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-800 truncate">
+                        <div className="min-w-0 select-none cursor-default">
+                          <div className="flex items-center gap-1.5 select-none cursor-default">
+                            <span className="font-semibold text-slate-800 truncate select-none cursor-default">
                               {device.deviceName}
                             </span>
                             {isCurrent && (
-                              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-cyan-600 text-white uppercase tracking-wider">
+                              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-cyan-600 text-white uppercase tracking-wider select-none">
                                 Perangkat Ini
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
+                          <div className="text-[10px] text-slate-400 mt-0.5 select-none cursor-default">
                             Aktif:{' '}
                             {device.lastActive
                               ? new Date(device.lastActive).toLocaleDateString('id-ID', {

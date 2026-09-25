@@ -1061,63 +1061,63 @@ export const SettingsView: React.FC = () => {
 
           {/* Admin Device Management Modal (Max 2 Devices Policy) */}
           {deviceManageUser && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
-              <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150 select-none cursor-default">
+              <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 select-none cursor-default">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 select-none cursor-default">
+                  <div className="flex items-center gap-3 select-none cursor-default">
                     <div className="w-10 h-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center">
                       <Laptop className="w-5 h-5" />
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">
+                    <div className="select-none cursor-default">
+                      <h3 className="text-sm font-bold text-slate-900 select-none cursor-default">
                         Kelola Sesi Perangkat Pengguna
                       </h3>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 select-none cursor-default">
                         {deviceManageUser.name} ({deviceManageUser.email || 'Tanpa Email'})
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => setDeviceManageUser(null)}
-                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer select-none"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="my-4">
+                <div className="my-4 select-none cursor-default">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs mb-4 select-none cursor-default">
-                    <span className="text-slate-600 font-medium">Batas Kebijakan Keamanan:</span>
-                    <span className="font-bold text-cyan-700 bg-cyan-100/60 px-2.5 py-0.5 rounded-md">
+                    <span className="text-slate-600 font-medium select-none cursor-default">Batas Kebijakan Keamanan:</span>
+                    <span className="font-bold text-cyan-700 bg-cyan-100/60 px-2.5 py-0.5 rounded-md select-none cursor-default">
                       1 User Maksimal 2 Perangkat
                     </span>
                   </div>
 
-                  <div className="space-y-2.5">
+                  <div className="space-y-2.5 select-none cursor-default">
                     {(deviceManageUser.activeDevices || []).length === 0 ? (
-                      <div className="p-6 text-center text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-2xl">
+                      <div className="p-6 text-center text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-2xl select-none cursor-default">
                         Pengguna ini belum memiliki sesi perangkat yang aktif.
                       </div>
                     ) : (
                       (deviceManageUser.activeDevices || []).map((dev, idx) => (
                         <div
                           key={dev.deviceId || idx}
-                          className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs select-none cursor-default"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                          <div className="flex items-center gap-2.5 min-w-0 select-none cursor-default">
+                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0 select-none cursor-default">
                               <Laptop className="w-4 h-4 text-cyan-600" />
                             </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-800 truncate">
+                            <div className="min-w-0 select-none cursor-default">
+                              <div className="flex items-center gap-2 select-none cursor-default">
+                                <span className="font-bold text-slate-800 truncate select-none cursor-default">
                                   {dev.deviceName}
                                 </span>
-                                <span className="px-1.5 py-0.2 bg-slate-200 text-slate-600 text-[10px] rounded font-mono">
+                                <span className="px-1.5 py-0.2 bg-slate-200 text-slate-600 text-[10px] rounded font-mono select-none cursor-default">
                                   Slot {idx + 1}/2
                                 </span>
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
+                              <div className="text-[10px] text-slate-400 mt-0.5 select-none cursor-default">
                                 Aktif: {dev.lastActive ? new Date(dev.lastActive).toLocaleString('id-ID') : 'Baru saja'}
                               </div>
                             </div>
@@ -1137,11 +1137,11 @@ export const SettingsView: React.FC = () => {
                               });
                               setTimeout(() => setUserNotice(null), 3000);
                             }}
-                            className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer select-none"
                             title="Putuskan sesi perangkat ini secara paksa"
                           >
                             <PowerOff className="w-3 h-3" />
-                            <span>Putuskan Sesi</span>
+                            <span className="select-none">Putuskan Sesi</span>
                           </button>
                         </div>
                       ))
