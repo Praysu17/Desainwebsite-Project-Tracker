@@ -15,7 +15,25 @@ import { useApp } from '../context/AppContext';
 import { formatRupiah } from '../utils/formatters';
 
 export const ReportsView: React.FC = () => {
-  const { incomes, expenses, settings } = useApp();
+  const { incomes, expenses, settings, currentUser, setActiveTab } = useApp();
+
+  // Guard: Staff accounts must never be allowed to view reports
+  if (currentUser?.role === 'Staff') {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-xs max-w-lg mx-auto my-12">
+        <h3 className="text-base font-bold text-slate-900">Akses Terbatas</h3>
+        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+          Akun Anda memiliki hak akses <strong>Staff</strong>. Modul Laporan & Analitik Agensi hanya dapat diakses oleh peran Admin dan Owner.
+        </p>
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className="mt-5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+        >
+          Kembali ke Halaman Ringkasan
+        </button>
+      </div>
+    );
+  }
 
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);

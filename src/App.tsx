@@ -16,8 +16,18 @@ import { LoginPage } from './components/LoginPage';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, publicShare, setPublicShare, isAuthenticated } = useApp();
+  const { activeTab, setActiveTab, publicShare, setPublicShare, isAuthenticated, currentUser } = useApp();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  const isStaff = currentUser?.role === 'Staff';
+  const isRestrictedForStaff = isStaff && (activeTab === 'settings' || activeTab === 'finance' || activeTab === 'reports');
+
+  // Automatically redirect Staff away from restricted tabs immediately
+  useEffect(() => {
+    if (isRestrictedForStaff) {
+      setActiveTab('dashboard');
+    }
+  }, [isRestrictedForStaff, setActiveTab]);
 
   // Listen to browser path for direct link opening (e.g. /share/proposal/token or /share/invoice/token)
   useEffect(() => {
@@ -103,11 +113,11 @@ const MainLayout: React.FC = () => {
           {activeTab === 'dashboard' && <DashboardView />}
           {activeTab === 'clients' && <ClientsView />}
           {activeTab === 'projects' && <ProjectsView />}
-          {activeTab === 'finance' && <FinanceView />}
+          {activeTab === 'finance' && (!isStaff ? <FinanceView /> : <DashboardView />)}
           {activeTab === 'proposals' && <ProposalsView />}
           {activeTab === 'invoices' && <InvoicesView />}
-          {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'settings' && <SettingsView />}
+          {activeTab === 'reports' && (!isStaff ? <ReportsView /> : <DashboardView />)}
+          {activeTab === 'settings' && (!isStaff ? <SettingsView /> : <DashboardView />)}
         </main>
       </div>
     </div>

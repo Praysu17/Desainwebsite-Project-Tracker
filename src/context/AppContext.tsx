@@ -379,72 +379,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // 7. Sync Users collection (so user additions like Kunto Krisworo and profile/password updates are available real-time)
+    // 7. Sync Users collection (Real-time synchronization for all users, roles, passwords, and profiles)
     const unsubUsers = onSnapshot(
       collection(db, 'users'),
       (snapshot) => {
-        const remoteUsersMap = new Map<string, UserAccount>();
+        if (snapshot.empty) {
+          // If Firestore users collection is completely empty on first launch, seed default users
+          DEFAULT_SETTINGS.users.forEach((defaultUser) => {
+            setDoc(doc(db, 'users', defaultUser.id), defaultUser).catch(() => {});
+          });
+          return;
+        }
 
-        // 1. Preload DEFAULT_SETTINGS users
-        DEFAULT_SETTINGS.users.forEach((u) => {
-          remoteUsersMap.set(u.id, { ...u });
-          if (u.email) remoteUsersMap.set(u.email.toLowerCase(), { ...u });
-        });
-
-        // 2. Overlay remote Firestore users (Firestore is the source of truth)
+        const remoteUsers: UserAccount[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as UserAccount;
-          const u: UserAccount = {
+          remoteUsers.push({
             ...data,
             id: docSnap.id || data.id,
-          };
-          remoteUsersMap.set(u.id, u);
-          if (u.email) {
-            remoteUsersMap.set(u.email.toLowerCase(), u);
-          }
+            name: data.name || 'User',
+            email: data.email || '',
+            role: data.role || 'Staff',
+            password: data.password || 'Password01',
+            avatar: data.avatar || '',
+          });
         });
 
-        // Unique users list by id
-        const uniqueById = new Map<string, UserAccount>();
-        remoteUsersMap.forEach((u) => {
-          uniqueById.set(u.id, u);
+        // Deduplicate users strictly by id
+        const usersById = new Map<string, UserAccount>();
+        remoteUsers.forEach((u) => {
+          usersById.set(u.id, u);
         });
-        const mergedUsers = Array.from(uniqueById.values());
+        const cleanUsers = Array.from(usersById.values());
 
         setSettings((prev) => ({
           ...prev,
-          users: mergedUsers,
-          teamMembers: mergedUsers,
+          users: cleanUsers,
+          teamMembers: cleanUsers,
         }));
 
         // Real-time synchronization for currentUser state & localStorage
         setCurrentUser((prev) => {
-          const updatedCurrent = mergedUsers.find(
-            (u) =>
-              u.id === prev.id ||
-              (u.email && prev.email && u.email.toLowerCase() === prev.email.toLowerCase())
-          );
+          if (!prev) return cleanUsers[0];
+
+          // Match by id first, then email (case-insensitive), then name (case-insensitive)
+          const updatedCurrent = cleanUsers.find((u) => {
+            if (u.id === prev.id) return true;
+            if (u.email && prev.email && u.email.trim().toLowerCase() === prev.email.trim().toLowerCase()) return true;
+            if (u.name && prev.name && u.name.trim().toLowerCase() === prev.name.trim().toLowerCase()) return true;
+            return false;
+          });
+
           if (updatedCurrent) {
             try {
               localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
-            } catch {
-              // ignore
-            }
+            } catch {}
             return updatedCurrent;
           }
           return prev;
-        });
-
-        // Ensure default users exist in Firestore
-        DEFAULT_SETTINGS.users.forEach((defaultUser) => {
-          const exists = snapshot.docs.some(
-            (d) =>
-              d.id === defaultUser.id ||
-              (d.data() as UserAccount).email?.toLowerCase() === defaultUser.email?.toLowerCase()
-          );
-          if (!exists) {
-            setDoc(doc(db, 'users', defaultUser.id), defaultUser).catch(() => {});
-          }
         });
       },
       (error) => {
@@ -1113,47 +1105,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const trimmedId = identifier.trim().toLowerCase();
     const trimmedPass = pass.trim();
 
-    // Aggregate users across in-memory state, defaults, and Firestore
-    const userMap = new Map<string, UserAccount>();
-
-    DEFAULT_SETTINGS.users.forEach((u) => {
-      userMap.set(u.email.toLowerCase(), u);
-      userMap.set(u.id, u);
-    });
-    (settings.users || []).forEach((u) => {
-      if (u.email) userMap.set(u.email.toLowerCase(), u);
-      if (u.id) userMap.set(u.id, u);
-    });
-    (settings.teamMembers || []).forEach((u) => {
-      if (u.email) userMap.set(u.email.toLowerCase(), u);
-      if (u.id) userMap.set(u.id, u);
-    });
-
-    // Also query Firestore users collection directly for the freshest real-time data
+    // Query Firestore directly for the freshest real-time users list
+    let freshUsers: UserAccount[] = [];
     try {
       const userSnaps = await getDocs(collection(db, 'users'));
       userSnaps.forEach((d) => {
         const u = { ...d.data(), id: d.id } as UserAccount;
-        if (u.email) {
-          userMap.set(u.email.toLowerCase(), u);
-        }
-        if (u.id) {
-          userMap.set(u.id, u);
-        }
+        if (u.name) freshUsers.push(u);
       });
     } catch {
-      // fallback to current map
+      // fallback to settings/memory if offline
+      freshUsers = settings.users || [];
     }
 
-    const allUsers = Array.from(new Set(userMap.values()));
+    if (freshUsers.length === 0) {
+      freshUsers = settings.users || DEFAULT_SETTINGS.users;
+    }
 
-    const matchedUser = allUsers.find((u) => {
-      const emailMatch = Boolean(u.email && u.email.trim().toLowerCase() === trimmedId);
-      const nameMatch = Boolean(u.name && u.name.trim().toLowerCase() === trimmedId);
-      // Also match partial name if exact words match
-      const looseNameMatch = Boolean(u.name && u.name.trim().toLowerCase().includes(trimmedId));
-      return emailMatch || nameMatch || looseNameMatch;
-    });
+    // Match order:
+    // 1. Exact email match
+    // 2. Exact name match
+    // 3. Name contains trimmedId
+    const matchedUser =
+      freshUsers.find((u) => u.email && u.email.trim().toLowerCase() === trimmedId) ||
+      freshUsers.find((u) => u.name && u.name.trim().toLowerCase() === trimmedId) ||
+      freshUsers.find((u) => u.name && u.name.trim().toLowerCase().includes(trimmedId));
 
     if (!matchedUser) {
       return { success: false, message: 'Email atau Nama Pengguna tidak ditemukan.' };
@@ -1166,6 +1142,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCurrentUser(matchedUser);
     setIsAuthenticated(true);
+    // CRITICAL: Always reset activeTab to 'dashboard' on login so a user isn't stuck on restricted views!
+    setActiveTab('dashboard');
+
     try {
       localStorage.setItem('sugeng_auth', 'true');
       localStorage.setItem('sugeng_current_user', JSON.stringify(matchedUser));
@@ -1201,6 +1180,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setIsAuthenticated(true);
+      setActiveTab('dashboard');
       try {
         localStorage.setItem('sugeng_auth', 'true');
       } catch {}
@@ -1224,6 +1204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     setIsAuthenticated(false);
+    setActiveTab('dashboard');
     try {
       localStorage.removeItem('sugeng_auth');
     } catch {}
@@ -1270,12 +1251,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const fullUpdatedUser: UserAccount = {
       id: userId,
-      name: updates.name ?? existing?.name ?? 'User',
-      email: updates.email ?? existing?.email ?? '',
-      role: updates.role ?? existing?.role ?? 'Staff',
-      password: updates.password ?? existing?.password ?? 'Password01',
+      name: updates.name !== undefined ? updates.name : (existing?.name ?? 'User'),
+      email: updates.email !== undefined ? updates.email : (existing?.email ?? ''),
+      role: updates.role !== undefined ? updates.role : (existing?.role ?? 'Staff'),
+      password: updates.password !== undefined ? updates.password : (existing?.password ?? 'Password01'),
       avatar: updates.avatar !== undefined ? updates.avatar : (existing?.avatar ?? ''),
-      ...updates,
     };
 
     const updatedUsers = (settings.users || []).map((u) => (u.id === userId ? fullUpdatedUser : u));
@@ -1295,7 +1275,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (
       currentUser.id === userId ||
-      (currentUser.email && fullUpdatedUser.email && currentUser.email.toLowerCase() === fullUpdatedUser.email.toLowerCase())
+      (currentUser.email && fullUpdatedUser.email && currentUser.email.toLowerCase() === fullUpdatedUser.email.toLowerCase()) ||
+      (currentUser.name && fullUpdatedUser.name && currentUser.name.toLowerCase() === fullUpdatedUser.name.toLowerCase())
     ) {
       setCurrentUser(fullUpdatedUser);
       try {
@@ -1304,12 +1285,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
+      // 1. Direct update to target user document
       await setDoc(doc(db, 'users', userId), fullUpdatedUser, { merge: true });
+
+      // 2. Also keep 'settings/agency' in sync
       await setDoc(
         doc(db, 'settings', 'agency'),
         { users: updatedUsers, teamMembers: updatedUsers },
         { merge: true }
       ).catch(() => {});
+
+      // 3. Check for any duplicate document with the same email or name in Firestore and sync it
+      const snaps = await getDocs(collection(db, 'users'));
+      snaps.forEach((d) => {
+        if (d.id !== userId) {
+          const dData = d.data() as UserAccount;
+          const sameEmail = Boolean(fullUpdatedUser.email && dData.email && dData.email.trim().toLowerCase() === fullUpdatedUser.email.trim().toLowerCase());
+          const sameName = Boolean(fullUpdatedUser.name && dData.name && dData.name.trim().toLowerCase() === fullUpdatedUser.name.trim().toLowerCase());
+          if (sameEmail || sameName) {
+            setDoc(doc(db, 'users', d.id), { ...fullUpdatedUser, id: d.id }, { merge: true }).catch(() => {});
+          }
+        }
+      });
     } catch (err) {
       console.error('Update user Firestore error:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);

@@ -31,6 +31,8 @@ export const FinanceView: React.FC = () => {
     clients,
     projects,
     settings,
+    currentUser,
+    setActiveTab,
     addIncome,
     updateIncome,
     deleteIncome,
@@ -39,6 +41,24 @@ export const FinanceView: React.FC = () => {
     deleteExpense,
     globalSearch,
   } = useApp();
+
+  // Guard: Staff accounts must never be allowed to view or edit finance records
+  if (currentUser?.role === 'Staff') {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-xs max-w-lg mx-auto my-12">
+        <h3 className="text-base font-bold text-slate-900">Akses Terbatas</h3>
+        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+          Akun Anda memiliki hak akses <strong>Staff</strong>. Modul Keuangan & Arus Kas hanya dapat diakses oleh peran Admin dan Owner.
+        </p>
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className="mt-5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+        >
+          Kembali ke Halaman Ringkasan
+        </button>
+      </div>
+    );
+  }
 
   const [activeSubTab, setActiveSubTab] = useState<'income' | 'expense'>('income');
   const [localSearch, setLocalSearch] = useState('');
