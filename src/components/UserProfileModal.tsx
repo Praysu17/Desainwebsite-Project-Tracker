@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { compressImage } from '../utils/imageUtils';
+import { cleanActiveDevices, getCurrentDeviceSession } from '../utils/deviceHelper';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -31,6 +32,16 @@ interface UserProfileModalProps {
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, updateUser, setActiveTab, logout, currentDeviceId, disconnectUserDevice } = useApp();
+
+  // Active devices with guaranteed presence of current authenticated device session
+  const activeDevicesList = React.useMemo(() => {
+    const list = cleanActiveDevices(currentUser.activeDevices);
+    const hasCurrent = list.some((d) => d.deviceId === currentDeviceId);
+    if (!hasCurrent && list.length < 2) {
+      return [...list, getCurrentDeviceSession()];
+    }
+    return list;
+  }, [currentUser.activeDevices, currentDeviceId]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(currentUser.name || 'Sugeng Prayitno');
@@ -430,7 +441,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   <span className="font-bold text-xs text-slate-800">Perangkat Aktif Anda</span>
                 </div>
                 <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-100">
-                  {(currentUser.activeDevices || []).length}/2 Terhubung
+                  {activeDevicesList.length}/2 Terhubung
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mb-2.5 select-none cursor-default">
@@ -438,7 +449,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               </p>
 
               <div className="space-y-2 select-none cursor-default">
-                {(currentUser.activeDevices || []).map((device, idx) => {
+                {activeDevicesList.map((device, idx) => {
                   const isCurrent = device.deviceId === currentDeviceId;
                   const isMobile =
                     device.os?.toLowerCase().includes('android') ||
@@ -507,7 +518,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 })}
 
                 {/* Slot info if only 1 device is connected */}
-                {(currentUser.activeDevices || []).length < 2 && (
+                {activeDevicesList.length < 2 && (
                   <div className="p-2 border border-dashed border-slate-200 rounded-xl text-center text-[11px] text-slate-400 bg-white">
                     + 1 slot perangkat cadangan tersedia
                   </div>

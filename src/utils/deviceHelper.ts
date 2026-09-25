@@ -65,9 +65,15 @@ export const cleanActiveDevices = (devices?: DeviceSession[]): DeviceSession[] =
 
   devices.forEach((d) => {
     if (!d || !d.deviceId) return;
-    const time = new Date(d.lastActive || d.createdAt || 0).getTime();
-    if (time > thirtyDaysAgo) {
-      map.set(d.deviceId, d);
+    const rawTime = d.lastActive || d.createdAt;
+    const time = rawTime ? new Date(rawTime).getTime() : Date.now();
+    const validTime = isNaN(time) || time === 0 ? Date.now() : time;
+    if (validTime > thirtyDaysAgo) {
+      map.set(d.deviceId, {
+        ...d,
+        lastActive: d.lastActive || new Date().toISOString(),
+        createdAt: d.createdAt || new Date().toISOString(),
+      });
     }
   });
 

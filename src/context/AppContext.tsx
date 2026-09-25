@@ -231,15 +231,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
     const savedUser = localStorage.getItem('sugeng_current_user');
+    let user: UserAccount = settings.users[0] || DEFAULT_SETTINGS.users[0];
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        if (parsed && parsed.id && parsed.name) return parsed;
+        if (parsed && parsed.id && parsed.name) {
+          user = parsed;
+        }
       } catch (e) {
         // ignore
       }
     }
-    return settings.users[0] || DEFAULT_SETTINGS.users[0];
+    const isSavedAuth = typeof window !== 'undefined' && localStorage.getItem('sugeng_auth') === 'true';
+    if (isSavedAuth) {
+      const myDevId = getDeviceId();
+      const existing = cleanActiveDevices(user.activeDevices);
+      if (!existing.some((d) => d.deviceId === myDevId) && existing.length < 2) {
+        user = {
+          ...user,
+          activeDevices: [...existing, getCurrentDeviceSession()],
+        };
+      }
+    }
+    return user;
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -287,36 +301,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [deviceNotice, setDeviceNotice] = useState<string | null>(null);
   const clearDeviceNotice = () => setDeviceNotice(null);
 
-  // Periodic heartbeat to refresh device activity
+  // Proactively register and maintain active device session for authenticated user
   useEffect(() => {
     if (!isAuthenticated || !currentUser?.id) return;
     const myDevId = getDeviceId();
+    const mySession = getCurrentDeviceSession();
 
-    const updateHeartbeat = async () => {
+    const syncActiveDeviceSession = async () => {
       try {
         const userRef = doc(db, 'users', currentUser.id);
         const userSnap = await getDoc(userRef);
+        let existingDevices: DeviceSession[] = [];
         if (userSnap.exists()) {
           const uData = userSnap.data() as UserAccount;
-          let devices = cleanActiveDevices(uData.activeDevices);
-          let found = false;
-          devices = devices.map((d) => {
-            if (d.deviceId === myDevId) {
-              found = true;
-              return { ...d, lastActive: new Date().toISOString() };
-            }
-            return d;
-          });
-          if (found) {
-            await setDoc(userRef, { activeDevices: devices }, { merge: true });
-          }
+          existingDevices = cleanActiveDevices(uData.activeDevices);
+        } else {
+          existingDevices = cleanActiveDevices(currentUser.activeDevices);
         }
+
+        const isCurrentRegistered = existingDevices.some((d) => d.deviceId === myDevId);
+        let updatedDevices: DeviceSession[];
+
+        if (isCurrentRegistered) {
+          // Update lastActive timestamp & refresh metadata
+          updatedDevices = existingDevices.map((d) =>
+            d.deviceId === myDevId
+              ? {
+                  ...d,
+                  lastActive: new Date().toISOString(),
+                  deviceName: mySession.deviceName,
+                  browser: mySession.browser,
+                  os: mySession.os,
+                }
+              : d
+          );
+        } else if (existingDevices.length < 2) {
+          // Add this active session (slot 1 or 2)
+          updatedDevices = [...existingDevices, mySession];
+        } else {
+          // If already 2 devices and current device wasn't recorded, keep latest session + current session
+          const sorted = [...existingDevices].sort(
+            (a, b) => new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime()
+          );
+          updatedDevices = [sorted[0], mySession];
+        }
+
+        // Persist to Firestore
+        await setDoc(userRef, { activeDevices: updatedDevices }, { merge: true });
+
+        // Update local state and storage
+        setCurrentUser((prev) => {
+          if (prev && prev.id === currentUser.id) {
+            const updated = { ...prev, activeDevices: updatedDevices };
+            try {
+              localStorage.setItem('sugeng_current_user', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          }
+          return prev;
+        });
+
+        setSettings((prev) => {
+          const updateList = (list?: UserAccount[]) =>
+            (list || []).map((u) => (u.id === currentUser.id ? { ...u, activeDevices: updatedDevices } : u));
+          return {
+            ...prev,
+            users: updateList(prev.users),
+            teamMembers: updateList(prev.teamMembers),
+          };
+        });
       } catch {
         // ignore network error
       }
     };
 
-    const timer = setInterval(updateHeartbeat, 5 * 60 * 1000);
+    // Run immediately on mount or authentication!
+    syncActiveDeviceSession();
+
+    const timer = setInterval(syncActiveDeviceSession, 2 * 60 * 1000);
     return () => clearInterval(timer);
   }, [isAuthenticated, currentUser?.id]);
 
@@ -503,18 +565,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
 
           if (updatedCurrent) {
-            try {
-              localStorage.setItem('sugeng_current_user', JSON.stringify(updatedCurrent));
-            } catch {}
-
-            // Real-time check: If current device was kicked out or disconnected
             const myDevId = getDeviceId();
-            const activeDevs = cleanActiveDevices(updatedCurrent.activeDevices);
+            let activeDevs = cleanActiveDevices(updatedCurrent.activeDevices);
             const isSavedAuth = typeof window !== 'undefined' && localStorage.getItem('sugeng_auth') === 'true';
 
+            // Ensure current device session is included for authenticated user
+            if (isSavedAuth && !activeDevs.some((d) => d.deviceId === myDevId) && activeDevs.length < 2) {
+              const mySession = getCurrentDeviceSession();
+              activeDevs = [...activeDevs, mySession];
+              setDoc(doc(db, 'users', updatedCurrent.id), { activeDevices: activeDevs }, { merge: true }).catch(() => {});
+            }
+
+            // Real-time check: If current device was kicked out because 2 other devices are active
             if (
               isSavedAuth &&
-              activeDevs.length > 0 &&
+              activeDevs.length >= 2 &&
               !activeDevs.some((d) => d.deviceId === myDevId)
             ) {
               console.warn('Sesi perangkat diputus karena login di perangkat lain.');
@@ -528,7 +593,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               );
             }
 
-            return updatedCurrent;
+            const finalUser: UserAccount = {
+              ...updatedCurrent,
+              activeDevices: activeDevs,
+            };
+
+            try {
+              localStorage.setItem('sugeng_current_user', JSON.stringify(finalUser));
+            } catch {}
+
+            return finalUser;
           }
           return prev;
         });
@@ -1289,6 +1363,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // CRITICAL: Always reset activeTab to 'dashboard' on login so a user isn't stuck on restricted views!
     setActiveTab('dashboard');
 
+    setSettings((prev) => {
+      const syncList = (list?: UserAccount[]) =>
+        (list || []).map((u) => (u.id === matchedUser.id ? updatedUserWithDevices : u));
+      return {
+        ...prev,
+        users: syncList(prev.users),
+        teamMembers: syncList(prev.teamMembers),
+      };
+    });
+
     try {
       localStorage.setItem('sugeng_auth', 'true');
       localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUserWithDevices));
@@ -1360,6 +1444,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(updatedUser);
       setIsAuthenticated(true);
       setActiveTab('dashboard');
+
+      setSettings((prev) => {
+        const syncList = (list?: UserAccount[]) =>
+          (list || []).map((u) => (u.id === matched.id ? updatedUser : u));
+        return {
+          ...prev,
+          users: syncList(prev.users),
+          teamMembers: syncList(prev.teamMembers),
+        };
+      });
+
       try {
         localStorage.setItem('sugeng_auth', 'true');
         localStorage.setItem('sugeng_current_user', JSON.stringify(updatedUser));

@@ -30,12 +30,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AgencySettings, PartnerSplit, TeamMember, UserAccount } from '../types';
+import { cleanActiveDevices, getCurrentDeviceSession } from '../utils/deviceHelper';
 
 export const SettingsView: React.FC = () => {
   const {
     settings,
     updateSettings,
     currentUser,
+    currentDeviceId,
     addUser,
     updateUser,
     deleteUser,
@@ -776,7 +778,15 @@ export const SettingsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {(formData.teamMembers || formData.users || []).map((member) => (
+                  {(formData.teamMembers || formData.users || []).map((member) => {
+                    const memberDevs = cleanActiveDevices(member.activeDevices);
+                    const isCurrentMember = currentUser.id === member.id;
+                    const effectiveMemberDevs =
+                      isCurrentMember && !memberDevs.some((d) => d.deviceId === currentDeviceId) && memberDevs.length < 2
+                        ? [...memberDevs, getCurrentDeviceSession()]
+                        : memberDevs;
+
+                    return (
                     <tr key={member.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
@@ -848,21 +858,21 @@ export const SettingsView: React.FC = () => {
                       <td className="py-3 px-4">
                         <button
                           type="button"
-                          onClick={() => setDeviceManageUser(member)}
+                          onClick={() => setDeviceManageUser({ ...member, activeDevices: effectiveMemberDevs })}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer hover:shadow-xs bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
                           title="Klik untuk melihat dan kelola sesi perangkat"
                         >
                           <Laptop className="w-3 h-3 text-cyan-600" />
                           <span
                             className={
-                              (member.activeDevices || []).length >= 2
+                              effectiveMemberDevs.length >= 2
                                 ? 'text-amber-700 font-bold'
-                                : (member.activeDevices || []).length === 1
+                                : effectiveMemberDevs.length === 1
                                 ? 'text-emerald-700 font-bold'
                                 : 'text-slate-500'
                             }
                           >
-                            {(member.activeDevices || []).length}/2 Perangkat
+                            {effectiveMemberDevs.length}/2 Perangkat
                           </span>
                         </button>
                       </td>
@@ -871,7 +881,7 @@ export const SettingsView: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setDeviceManageUser(member)}
+                            onClick={() => setDeviceManageUser({ ...member, activeDevices: effectiveMemberDevs })}
                             className="p-1.5 text-slate-600 hover:text-cyan-700 hover:bg-cyan-50 rounded-lg transition-colors flex items-center gap-1 font-semibold"
                             title="Kelola Sesi Perangkat (Maks 2 Device)"
                           >
@@ -903,7 +913,8 @@ export const SettingsView: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {(formData.teamMembers || formData.users || []).length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400 italic text-xs">
@@ -1113,6 +1124,11 @@ export const SettingsView: React.FC = () => {
                                 <span className="font-bold text-slate-800 truncate select-none cursor-default">
                                   {dev.deviceName}
                                 </span>
+                                {dev.deviceId === currentDeviceId && (
+                                  <span className="px-1.5 py-0.2 bg-cyan-600 text-white text-[9px] rounded-full font-bold uppercase select-none cursor-default">
+                                    Perangkat Ini
+                                  </span>
+                                )}
                                 <span className="px-1.5 py-0.2 bg-slate-200 text-slate-600 text-[10px] rounded font-mono select-none cursor-default">
                                   Slot {idx + 1}/2
                                 </span>
